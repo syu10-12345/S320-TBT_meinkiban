@@ -1,7 +1,9 @@
+
 #include <Wire.h>
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLE2902.h>
+//#include <BLEDevice.h>
+//#include <BLEServer.h>
+//#include <BLE2902.h>
+#include <NimBLEDevice.h>
 #include <Adafruit_MCP23X17.h>
 #include <ICM20948_WE.h>
 #include <TFT_eSPI.h>
@@ -78,29 +80,26 @@ struct FullTelemetryPacket {
 };
 #pragma pack(pop)
 
-// 接続先のアドレス（スキャンで見つけたら保存する）
-BLEAddress* addrLogger = nullptr;
-BLEAddress* addrControl = nullptr;
+// NimBLE仕様に変更
+NimBLEAddress* addrLogger = nullptr;
+NimBLEAddress* addrControl = nullptr;
 
-// クライアント（接続担当）を2つ用意
-BLEClient* pClientLogger = nullptr;
-BLEClient* pClientControl = nullptr;
+NimBLEClient* pClientLogger = nullptr;
+NimBLEClient* pClientControl = nullptr;
 
-// 特徴量（書き込み用窓口）を2つ用意
-BLERemoteCharacteristic* pCharLogger = nullptr;
-BLERemoteCharacteristic* pCharControl = nullptr;
+NimBLERemoteCharacteristic* pCharLogger = nullptr;
+NimBLERemoteCharacteristic* pCharControl = nullptr;
 
 bool connectedLogger = false;
 bool connectedControl = false;
 
 // --- 受信コールバック（操縦用C3からデータが届いた時） ---
-// ★追加：操縦器(C3-CONTROL)からデータが届いたときに自動で動く関数
+// NimBLE仕様に変更
 static void controlNotifyCallback(
-  BLERemoteCharacteristic* pBLERemoteCharacteristic,
+  NimBLERemoteCharacteristic* pBLERemoteCharacteristic,
   uint8_t* pData,
   size_t length,
   bool isNotify) {
-    // 届いたデータがControlData構造体のサイズと同じかチェック
     if (length == sizeof(ControlData)) {
         ControlData* incoming = (ControlData*)pData;
         E_steer = incoming->E_steer;
@@ -115,34 +114,36 @@ static void controlNotifyCallback(
 }
 
 // ==========================================
-// ★追加：WROOM側の切断検知コールバック
+// ★WROOM側の切断検知コールバック (NimBLE v2仕様に修正)
 // ==========================================
-class LoggerClientCallback : public BLEClientCallbacks {
-  void onDisconnect(BLEClient* pclient) {
+class LoggerClientCallback : public NimBLEClientCallbacks {
+  void onDisconnect(NimBLEClient* pclient, int reason) override { // reasonを追加
     connectedLogger = false;
     Serial.println("!!! Logger C3 connection lost (Auto Reset) !!!");
   }
 };
 
-class ControlClientCallback : public BLEClientCallbacks {
-  void onDisconnect(BLEClient* pclient) {
+class ControlClientCallback : public NimBLEClientCallbacks {
+  void onDisconnect(NimBLEClient* pclient, int reason) override { // reasonを追加
     connectedControl = false;
     Serial.println("!!! Control C3 connection lost (Auto Reset) !!!");
   }
 };
+
 // ==========================================
-// --- スキャンコールバック ---
-class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
-    void onResult(BLEAdvertisedDevice advertisedDevice) {
-        String name = advertisedDevice.getName().c_str();
+// --- スキャンコールバック (NimBLE仕様に修正) ---
+class MyAdvertisedDeviceCallbacks: public NimBLEScanCallbacks { // クラス名を変更
+    // 引数に const を追加
+    void onResult(const NimBLEAdvertisedDevice* advertisedDevice) override {
+        String name = advertisedDevice->getName().c_str();
         if (name == "C3-LOGGER") {
             if (addrLogger != nullptr) delete addrLogger;
-            addrLogger = new BLEAddress(advertisedDevice.getAddress());
+            addrLogger = new NimBLEAddress(advertisedDevice->getAddress());
             Serial.println("Found Logger C3");
         } 
         else if (name == "C3-CONTROL") {
             if (addrControl != nullptr) delete addrControl;
-            addrControl = new BLEAddress(advertisedDevice.getAddress());
+            addrControl = new NimBLEAddress(advertisedDevice->getAddress());
             Serial.println("Found Control C3");
         }
     }
@@ -281,10 +282,13 @@ void setup() {
   startMeasurement(); 
   delay(20);
 
-  // BLEの初期設定
-  BLEDevice::init("WROOM-MASTER");
-  BLEScan* pScan = BLEDevice::getScan();
-  pScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+  // NimBLEの初期設定
+  NimBLEDevice::init("WROOM-MASTER");
+  NimBLEScan* pScan = NimBLEDevice::getScan();
+  
+  // ★ここを setScanCallbacks に変更
+  pScan->setScanCallbacks(new MyAdvertisedDeviceCallbacks());
+  
   pScan->setActiveScan(true);
   
   xTaskCreatePinnedToCore(bleScanTask,    "BLE_Scan",    4096, NULL, 1, NULL, 1);
@@ -723,16 +727,15 @@ void calcRPM(){
 }
 
 // ==========================================
-// 1. スキャン専用タスク（相手の住所を見つける係）
+// 1. スキャン専用タスク
 // ==========================================
 void bleScanTask(void *pvParameters) {
   while (true) {
-    // どちらかのアドレスがまだ見つかっていない場合のみスキャンを実行
     if (addrControl == nullptr || addrLogger == nullptr) {
-      BLEDevice::getScan()->start(2, false); // 2秒間探す（この間このタスクはフリーズするが他には影響なし！）
-      BLEDevice::getScan()->clearResults();
+      NimBLEDevice::getScan()->start(2, false); 
+      NimBLEDevice::getScan()->clearResults();
     }
-    vTaskDelay(1000 / portTICK_PERIOD_MS); // 1秒休んでからまた探す
+    vTaskDelay(1000 / portTICK_PERIOD_MS); 
   }
 }
 
@@ -742,43 +745,38 @@ void bleScanTask(void *pvParameters) {
 void bleControlTask(void *pvParameters) {
   unsigned long lastBleSend = 0;
 
-  // ★修正箇所：タスク起動時に「1回だけ」クライアントを生成する（メモリ断片化防止）
   if (pClientControl == nullptr) {
-    pClientControl = BLEDevice::createClient();
+    pClientControl = NimBLEDevice::createClient();
     pClientControl->setClientCallbacks(new ControlClientCallback());
   }
 
   while (true) {
-    // 接続が切れている、かつアドレスが判明している場合
     if (!connectedControl && addrControl != nullptr) {
       Serial.println("Connecting to Control C3...");
       
-      // delete せずに、そのまま再接続を試みる
       if (pClientControl->connect(*addrControl)) {
-        pClientControl->setMTU(200);
-        BLERemoteService* pSvc = pClientControl->getService(serviceUUID);
+        // pClientControl->setMTU(200); // NimBLEは通常自動でMTUをネゴシエーションしますが必要なら残せます
+        NimBLERemoteService* pSvc = pClientControl->getService(serviceUUID);
         if (pSvc) {
           pCharControl = pSvc->getCharacteristic(charUUID);
           if (pCharControl && pCharControl->canNotify()) {
-            pCharControl->registerForNotify(controlNotifyCallback);
+            // NimBLEでは subscribe(true, コールバック関数) を使用します
+            pCharControl->subscribe(true, controlNotifyCallback);
             connectedControl = true;
             Serial.println(">>> Connected to Control C3! <<<");
           }
         }
       }
 
-      // もし接続に失敗した場合は、連続で試行しすぎてフリーズするのを防ぐため1秒待つ
       if (!connectedControl) {
         vTaskDelay(1000 / portTICK_PERIOD_MS);
       }
     }
 
-    // 接続中のデータ送信処理
     if (connectedControl && pCharControl != nullptr) {
       if (millis() - lastBleSend > 20) {
         NavigationData navData;
         navData.pitch = (float)pitch;
-        // navData.roll = (float)roll; 
         pCharControl->writeValue((uint8_t*)&navData, sizeof(NavigationData));
         lastBleSend = millis();
       }
@@ -793,20 +791,18 @@ void bleControlTask(void *pvParameters) {
 void bleLoggerTask(void *pvParameters) {
   unsigned long lastBleSend = 0;
 
-  // ★修正箇所：タスク起動時に「1回だけ」クライアントを生成する
   if (pClientLogger == nullptr) {
-    pClientLogger = BLEDevice::createClient();
+    pClientLogger = NimBLEDevice::createClient();
     pClientLogger->setClientCallbacks(new LoggerClientCallback());
   }
 
   while (true) {
-    if (tgrsw == HIGH) { // スイッチONの時
+    if (tgrsw == HIGH) { 
       if (!connectedLogger && addrLogger != nullptr) {
         Serial.println("Connecting to Logger C3...");
         
         if (pClientLogger->connect(*addrLogger)) {
-          pClientLogger->setMTU(200);
-          BLERemoteService* pSvc = pClientLogger->getService(serviceUUID);
+          NimBLERemoteService* pSvc = pClientLogger->getService(serviceUUID);
           if (pSvc) {
             pCharLogger = pSvc->getCharacteristic(charUUID);
             connectedLogger = true;
@@ -824,10 +820,8 @@ void bleLoggerTask(void *pvParameters) {
           FullTelemetryPacket packet;
           memset(&packet, 0, sizeof(packet));
           
-          // --- 航法データ (NavigationData) ---
           packet.nav.pitch = (float)pitch;
           
-          // --- メイン構造体 (直下にあるデータ) ---
           packet.roll      = (float)roll;
           packet.lat       = lat;
           packet.lon       = lon;
@@ -839,7 +833,6 @@ void bleLoggerTask(void *pvParameters) {
           packet.rear_rpm  = (float)rear_rpm;
           packet.epoch_time = epoch_time;
           
-          // --- 操縦データ (ControlData) ---
           packet.ctrl.E_steer = (float)E_steer;
           packet.ctrl.R_steer = (float)R_steer;
           packet.ctrl.E_trim  = (float)E_trim;
@@ -860,8 +853,7 @@ void bleLoggerTask(void *pvParameters) {
           lastBleSend = millis();
         }
       }
-    } else { // スイッチOFFの時
-      // ★修正箇所：切断だけ行い、delete (オブジェクトの破壊) は絶対にしない
+    } else { 
       if (connectedLogger) {
         pClientLogger->disconnect();
         connectedLogger = false;
