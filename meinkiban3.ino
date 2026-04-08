@@ -585,7 +585,7 @@ void loopGPS(){
   minute = mygnss.get(GNSS_MINUTE);
   second = mygnss.get(GNSS_SECOND);
   struct tm timeinfo;
-  if(alt <7.65){
+  if(0 < alt || alt <7.65){
     alt = 7.65;
   }else if(alt < 0){
     alt = 0;
@@ -650,6 +650,8 @@ void sendAndoroid(){
   if (!ultra_active)   errors.add(401); // 高度計エラー
   if (!sdp_active)     errors.add(402); //ピトー管エラー
   if (!imu_active)     errors.add(403); // 9軸センサーエラー
+  if(!connectedControl) errors.add(500); //操縦桿との通信エラー
+  if(!connectedLogger) errors.add(501); //ロガーとの通信エラー
   for (JsonVariant e : errors) {
     myAndroid.addError(e.as<int>());
   }
