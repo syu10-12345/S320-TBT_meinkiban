@@ -651,7 +651,9 @@ void sendAndoroid(){
   if (!sdp_active)     errors.add(402); //ピトー管エラー
   if (!imu_active)     errors.add(403); // 9軸センサーエラー
   if(!connectedControl) errors.add(500); //操縦桿との通信エラー
-  if(!connectedLogger) errors.add(501); //ロガーとの通信エラー
+  if(e_servo_temp <5) errors.add(501); //エレベーターサーボ温度異常
+  if(r_servo_temp <5) errors.add(502); //ラダーサーボ温度異常
+  if(!connectedLogger) errors.add(600); //ロガーとの通信エラー
   for (JsonVariant e : errors) {
     myAndroid.addError(e.as<int>());
   }
