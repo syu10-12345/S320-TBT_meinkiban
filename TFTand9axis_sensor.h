@@ -505,7 +505,7 @@ class TFTand9axis_sensor {
 
     void getPitchAndRoll(double *p, double *r) {
         myIMU.readSensor();
-        pitch = -myIMU.getPitch();
+        pitch = myIMU.getPitch();
         roll = myIMU.getRoll();
         *p = pitch * (PI / 180.0);
         *r = roll * (PI / 180.0);
