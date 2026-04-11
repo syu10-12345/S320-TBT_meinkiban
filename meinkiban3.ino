@@ -283,7 +283,7 @@ void setup() {
   // NimBLEの初期設定
   NimBLEDevice::init("WROOM-MASTER");
   NimBLEScan* pScan = NimBLEDevice::getScan();
-  
+
   // ★ここを setScanCallbacks に変更
   pScan->setScanCallbacks(new MyAdvertisedDeviceCallbacks());
   
@@ -655,7 +655,10 @@ void sendAndoroid(){
   if (!mcp_active)     errors.add(400); // MCP23017エラー
   if (!ultra_active)   errors.add(401); // 高度計エラー
   if (!sdp_active)     errors.add(402); //ピトー管エラー
-  if (!imu_active)     errors.add(201); // 9軸センサーエラー
+  if (!imu_active){
+     errors.add(201); // 9軸センサーエラー
+     errors.add(403);
+  } 
   if(!connectedControl) errors.add(500); //操縦桿との通信エラー
   if(e_servo_temp <5) errors.add(501); //エレベーターサーボ温度異常
   if(r_servo_temp <5) errors.add(502); //ラダーサーボ温度異常
