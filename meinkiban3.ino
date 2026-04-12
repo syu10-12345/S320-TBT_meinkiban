@@ -5,15 +5,11 @@
 #include <ICM20948_WE.h>
 #include <TFT_eSPI.h>
 #include <SPI.h>
-#include <FS.h>           // 追加：WebServerより先に読み込む
-#include <LittleFS.h>     // 追加
-#include <WiFi.h>
+// WiFi, FS, LittleFS は未使用のため削除（フラッシュ節約）
 #include <time.h>
 #include <sys/time.h>
 
 #include "TFTand9axis_sensor.h"
-
-using namespace fs;       // 名前空間を明示
 
 Adafruit_MCP23X17 mcp;
 TFTand9axis_sensor instrumentPanel;
@@ -180,8 +176,6 @@ int day;
 int hour;
 int minute;
 int second; 
-double offset_roll = 0.0;
-double offset_pitch = 0.0;
 double slits = 16.0;
 // 前部(Photo1)用の変数
 volatile int pulseCount1 = 0;
@@ -299,9 +293,22 @@ void loop() {
   photo2 = digitalRead(PHOTO2_PIN);
   tktsw = digitalRead(tktsw_PIN);
 
-  //if(tktsw){
-  //  instrumentPanel.offsets();
-  //}
+  // タクトスイッチによるキャリブレーション（500ms長押し検知）
+  // GPIO35はプルアップ不安定のため、長押しでフローティング誤検知を排除
+  {
+    static unsigned long lowStartTime = 0;
+    static bool wasTriggered = false;
+    if (tktsw == LOW) {
+      if (lowStartTime == 0) lowStartTime = millis();
+      if (!wasTriggered && millis() - lowStartTime > 500) {
+        wasTriggered = true;
+        instrumentPanel.calibrate();
+      }
+    } else {
+      lowStartTime = 0;
+      wasTriggered = false;
+    }
+  }
 
   if (millis() - lastUltraTime >= interval) {
     if (waitingForUltra) {
