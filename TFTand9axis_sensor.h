@@ -565,13 +565,88 @@ class TFTand9axis_sensor {
         *r = roll * (PI / 180.0);
     }
 
+    void drawCalStatus(const char* phase, int current = -1, int total = -1) {
+        tft.fillRect(0, tft.height() / 2 - 30, tft.width(), 60, TFT_BLACK);
+        tft.setTextColor(TFT_WHITE, TFT_BLACK);
+        tft.setTextDatum(MC_DATUM);
+        tft.setTextSize(2);
+        if (current >= 0 && total > 0) {
+            char buf[40];
+            snprintf(buf, sizeof(buf), "%s %d/%d", phase, current, total);
+            tft.drawString(buf, tft.width() / 2, tft.height() / 2);
+        } else {
+            tft.drawString(phase, tft.width() / 2, tft.height() / 2);
+        }
+    }
+
     void calibrate() {
         Serial.println("Calibration started...");
-        myIMU.autoOffsets();
+        tft.fillScreen(TFT_BLACK);
+
+        // autoOffsets()と同等の設定
+        myIMU.setGyrDLPF(ICM20948_DLPF_6);
+        myIMU.setGyrRange(ICM20948_GYRO_RANGE_250);
+        myIMU.setAccRange(ICM20948_ACC_RANGE_2G);
+        myIMU.setAccDLPF(ICM20948_DLPF_6);
+        delay(100);
+
+        // Phase 1: 安定化（300回空読み）
+        drawCalStatus("[CAL] Stabilizing", 0, 300);
+        for (int i = 0; i < 300; i++) {
+            myIMU.readSensor();
+            delay(1);
+            if (i % 50 == 0) drawCalStatus("[CAL] Stabilizing", i, 300);
+        }
+
+        // Phase 2: 加速度サンプリング（1000回）
+        xyzFloat accOfs = {0, 0, 0};
+        xyzFloat accRaw;
+        drawCalStatus("[CAL] Acc sampling", 0, 1000);
+        for (int i = 0; i < 1000; i++) {
+            myIMU.readSensor();
+            myIMU.getAccRawValues(&accRaw);
+            accOfs.x += accRaw.x;
+            accOfs.y += accRaw.y;
+            accOfs.z += accRaw.z;
+            delay(1);
+            if (i % 50 == 0) drawCalStatus("[CAL] Acc sampling", i, 1000);
+        }
+        accOfs.x /= 1000.0f;
+        accOfs.y /= 1000.0f;
+        accOfs.z /= 1000.0f;
+        accOfs.z -= 16384.0f;  // 重力1G補正
+
+        // Phase 3: ジャイロサンプリング（1000回）
+        xyzFloat gyrOfs = {0, 0, 0};
+        xyzFloat gyrRaw;
+        drawCalStatus("[CAL] Gyr sampling", 0, 1000);
+        for (int i = 0; i < 1000; i++) {
+            myIMU.readSensor();
+            myIMU.getGyrRawValues(&gyrRaw);
+            gyrOfs.x += gyrRaw.x;
+            gyrOfs.y += gyrRaw.y;
+            gyrOfs.z += gyrRaw.z;
+            delay(1);
+            if (i % 50 == 0) drawCalStatus("[CAL] Gyr sampling", i, 1000);
+        }
+        gyrOfs.x /= 1000.0f;
+        gyrOfs.y /= 1000.0f;
+        gyrOfs.z /= 1000.0f;
+
+        // Phase 4: オフセット適用
+        myIMU.setAccOffsets(accOfs);
+        myIMU.setGyrOffsets(gyrOfs);
+
+        // Phase 5: NVS保存
+        drawCalStatus("[CAL] Saving NVS...");
         saveOffsets();
-        applyIMUSettings();  // autoOffsets()が変更した設定を復元
+
+        // 完了
+        applyIMUSettings();
         _calibrated = true;
+        drawCalStatus("[CAL] Done!");
         Serial.println("Calibration saved to NVS");
+        delay(500);  // Done!を視認できるよう少し待つ
     }
 
     bool isCalibrated() {
