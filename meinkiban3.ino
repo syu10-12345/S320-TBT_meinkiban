@@ -294,18 +294,18 @@ void loop() {
   tktsw = digitalRead(tktsw_PIN);
 
   // タクトスイッチによるキャリブレーション（500ms長押し検知）
-  // GPIO35はプルアップ不安定のため、長押しでフローティング誤検知を排除
+  // GPIO35はプルダウン構成：未押下=LOW、押下=HIGH
   {
-    static unsigned long lowStartTime = 0;
+    static unsigned long highStartTime = 0;
     static bool wasTriggered = false;
-    if (tktsw == LOW) {
-      if (lowStartTime == 0) lowStartTime = millis();
-      if (!wasTriggered && millis() - lowStartTime > 500) {
+    if (tktsw == HIGH) {
+      if (highStartTime == 0) highStartTime = millis();
+      if (!wasTriggered && millis() - highStartTime > 500) {
         wasTriggered = true;
         instrumentPanel.calibrate();
       }
     } else {
-      lowStartTime = 0;
+      highStartTime = 0;
       wasTriggered = false;
     }
   }
