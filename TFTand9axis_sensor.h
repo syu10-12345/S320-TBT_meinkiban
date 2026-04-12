@@ -647,6 +647,7 @@ class TFTand9axis_sensor {
         drawCalStatus("[CAL] Done!");
         Serial.println("Calibration saved to NVS");
         delay(500);  // Done!を視認できるよう少し待つ
+        tft.fillScreen(TFT_BLACK);  // 通常描画に戻る前に画面クリア
     }
 
     bool isCalibrated() {
