@@ -283,7 +283,7 @@ void setup() {
   
   pScan->setActiveScan(true);
   
-  xTaskCreatePinnedToCore(bleScanTask,    "BLE_Scan",    4096, NULL, 1, NULL, 1);
+  xTaskCreatePinnedToCore(bleScanTask,    "BLE_Scan",    8192, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(bleControlTask, "BLE_Control", 8192, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(bleLoggerTask,  "BLE_Logger",  8192, NULL, 1, NULL, 1);
 }
