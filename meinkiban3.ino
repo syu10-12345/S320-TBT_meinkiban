@@ -112,14 +112,14 @@ static void controlNotifyCallback(
 class LoggerClientCallback : public NimBLEClientCallbacks {
   void onDisconnect(NimBLEClient* pclient, int reason) override { // reasonを追加
     connectedLogger = false;
-    Serial.println("!!! Logger C3 connection lost (Auto Reset) !!!");
+    Serial.printf("[%lu] !!! Logger C3 disconnect, reason=%d !!!\n", millis(), reason);
   }
 };
 
 class ControlClientCallback : public NimBLEClientCallbacks {
   void onDisconnect(NimBLEClient* pclient, int reason) override { // reasonを追加
     connectedControl = false;
-    Serial.println("!!! Control C3 connection lost (Auto Reset) !!!");
+    Serial.printf("[%lu] !!! Control C3 disconnect, reason=%d !!!\n", millis(), reason);
   }
 };
 
@@ -132,12 +132,12 @@ class MyAdvertisedDeviceCallbacks: public NimBLEScanCallbacks { // クラス名�
         if (name == "C3-LOGGER") {
             if (addrLogger != nullptr) delete addrLogger;
             addrLogger = new NimBLEAddress(advertisedDevice->getAddress());
-            Serial.println("Found Logger C3");
-        } 
+            Serial.printf("[%lu] Found Logger C3 rssi=%d\n", millis(), advertisedDevice->getRSSI());
+        }
         else if (name == "C3-CONTROL") {
             if (addrControl != nullptr) delete addrControl;
             addrControl = new NimBLEAddress(advertisedDevice->getAddress());
-            Serial.println("Found Control C3");
+            Serial.printf("[%lu] Found Control C3 rssi=%d\n", millis(), advertisedDevice->getRSSI());
         }
     }
 };
@@ -275,7 +275,9 @@ void setup() {
   delay(20);
 
   // NimBLEの初期設定
+  Serial.printf("[%lu] BLE: init begin\n", millis());
   NimBLEDevice::init("WROOM-MASTER");
+  Serial.printf("[%lu] BLE: init done\n", millis());
   NimBLEScan* pScan = NimBLEDevice::getScan();
 
   // ★ここを setScanCallbacks に変更
@@ -752,10 +754,13 @@ void calcRPM(){
 void bleScanTask(void *pvParameters) {
   while (true) {
     if (addrControl == nullptr || addrLogger == nullptr) {
-      NimBLEDevice::getScan()->start(2, false); 
+      Serial.printf("[%lu] scan: start (ctrl=%d log=%d)\n",
+                    millis(), addrControl != nullptr, addrLogger != nullptr);
+      NimBLEDevice::getScan()->start(2, false);
+      Serial.printf("[%lu] scan: end\n", millis());
       NimBLEDevice::getScan()->clearResults();
     }
-    vTaskDelay(1000 / portTICK_PERIOD_MS); 
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
   }
 }
 
@@ -772,18 +777,31 @@ void bleControlTask(void *pvParameters) {
 
   while (true) {
     if (!connectedControl && addrControl != nullptr) {
-      Serial.println("Connecting to Control C3...");
-      
-      if (pClientControl->connect(*addrControl)) {
+      unsigned long t0 = millis();
+      Serial.printf("[%lu] Control: connect() begin\n", t0);
+
+      bool ok = pClientControl->connect(*addrControl);
+      Serial.printf("[%lu] Control: connect() = %d (took %lu ms)\n",
+                    millis(), ok, millis() - t0);
+
+      if (ok) {
         // pClientControl->setMTU(200); // NimBLEは通常自動でMTUをネゴシエーションしますが必要なら残せます
+        unsigned long t1 = millis();
         NimBLERemoteService* pSvc = pClientControl->getService(serviceUUID);
+        Serial.printf("[%lu] Control: getService %s (%lu ms)\n",
+                      millis(), pSvc ? "ok" : "NG", millis() - t1);
         if (pSvc) {
+          unsigned long t2 = millis();
           pCharControl = pSvc->getCharacteristic(charUUID);
+          Serial.printf("[%lu] Control: getCharacteristic %s (%lu ms)\n",
+                        millis(), pCharControl ? "ok" : "NG", millis() - t2);
           if (pCharControl && pCharControl->canNotify()) {
             // NimBLEでは subscribe(true, コールバック関数) を使用します
+            unsigned long t3 = millis();
             pCharControl->subscribe(true, controlNotifyCallback);
             connectedControl = true;
-            Serial.println(">>> Connected to Control C3! <<<");
+            Serial.printf("[%lu] >>> Control C3 subscribed (%lu ms) <<<\n",
+                          millis(), millis() - t3);
           }
         }
       }
@@ -817,19 +835,24 @@ void bleLoggerTask(void *pvParameters) {
   }
 
   while (true) {
-    if (tgrsw == HIGH) { 
+    if (tgrsw == HIGH) {
       if (!connectedLogger && addrLogger != nullptr) {
-        Serial.println("Connecting to Logger C3...");
-        
-        if (pClientLogger->connect(*addrLogger)) {
+        unsigned long t0 = millis();
+        Serial.printf("[%lu] Logger: connect() begin\n", t0);
+
+        bool ok = pClientLogger->connect(*addrLogger);
+        Serial.printf("[%lu] Logger: connect() = %d (took %lu ms)\n",
+                      millis(), ok, millis() - t0);
+
+        if (ok) {
           NimBLERemoteService* pSvc = pClientLogger->getService(serviceUUID);
           if (pSvc) {
             pCharLogger = pSvc->getCharacteristic(charUUID);
             connectedLogger = true;
-            Serial.println(">>> Connected to Logger C3! <<<");
+            Serial.printf("[%lu] >>> Connected to Logger C3! <<<\n", millis());
           }
         }
-        
+
         if (!connectedLogger) {
           vTaskDelay(1000 / portTICK_PERIOD_MS);
         }
