@@ -704,12 +704,13 @@ public:
         topTriinitializer();
     }
 
-    void getPitchAndRoll(double *p, double *r)
+    void getPitchAndRoll(double *p, double *r, double *pr = nullptr)
     {
         if (!_calibrated)
         {
             *p = 0.0;
             *r = 0.0;
+            if (pr) *pr = 0.0;
             return;
         }
         myIMU.readSensor();
@@ -717,6 +718,12 @@ public:
         roll = myIMU.getRoll();
         *p = pitch * (PI / 180.0);
         *r = roll * (PI / 180.0);
+        if (pr)
+        {
+            xyzFloat gyrVal;
+            myIMU.getGyrValues(&gyrVal);
+            *pr = gyrVal.y;  // ピッチ軸の角速度 [°/s]
+        }
     }
 
     void drawCalStatus(const char *phase, int current = -1, int total = -1)

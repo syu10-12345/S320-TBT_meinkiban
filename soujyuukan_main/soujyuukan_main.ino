@@ -20,6 +20,7 @@ struct ControlData {
 };
 struct NavigationData {
   float pitch;
+  float pitch_rate;  // ジャイロ Y軸 [°/s] — PID の D項に使用
 };
 #pragma pack(pop)
 
@@ -37,7 +38,8 @@ class MyServerCallbacks : public BLEServerCallbacks {
     pServer->getAdvertising()->start();
   }
 };
-volatile float currentPitch = 0.0;  // 姿勢角（ピッチ）[°]
+volatile float currentPitch = 0.0;      // 姿勢角（ピッチ）[°]
+volatile float currentPitchRate = 0.0;  // ピッチレート [°/s]
 class MyCharCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic* pChar) {
     uint8_t* data = pChar->getData();
@@ -45,6 +47,7 @@ class MyCharCallbacks : public BLECharacteristicCallbacks {
     if (len == sizeof(NavigationData)) {
       NavigationData* incoming = (NavigationData*)data;
       currentPitch = incoming->pitch;
+      currentPitchRate = incoming->pitch_rate;
     }
   }
 };
@@ -124,16 +127,18 @@ void pidReset(PidState *state) {
   state->lastTime = millis();
 }
 
-double pidCompute(PidState *state, double error) {
+double pidCompute(PidState *state, double error, double gyroRate) {
   unsigned long now = millis();
   double dt = (now - state->lastTime) / 1000.0;
   if (dt <= 0) dt = 0.001;
 
   state->integral += error * dt;
   state->integral = constrain(state->integral, -state->integralMax, state->integralMax);
-  double derivative = (error - state->lastError) / dt;
 
-  //kp * e + ki * ∫e dt + kd + de/dt
+  // D項: 数値微分の代わりにジャイロ生値を使用
+  // error = target - pitch なので d(error)/dt = -pitch_rate = -gyroRate
+  double derivative = -gyroRate;
+
   double output = state->kp * error + state->ki * state->integral + state->kd * derivative;
 
   state->lastError = error;
@@ -432,7 +437,7 @@ void mainloop(void *pvParameters) {
     if (is_pid) {
       digitalWrite(LED, HIGH);
       if (is_center) {
-        tempDegE = (float)pidCompute(&pidElevator, errorE);
+        tempDegE = (float)pidCompute(&pidElevator, errorE, currentPitchRate);
         krsE = ele2krs(tempDegE + Trimelevetor);
       } else {
         pidReset(&pidElevator);
@@ -507,7 +512,7 @@ void setup() {
   pinMode(trimR2, INPUT);
   pinMode(resetPin, INPUT);
 
-  pidInit(&pidElevator, -1.0, -0.1, -0.0, 30.0);  // integralMax [°]
+  pidInit(&pidElevator, -1.0, -0.1, -0.05, 30.0);  // Kd=-0.05 : ジャイロD項有効化, integralMax [°]
   pidInit(&pidRudder, 1.0, 0.1, 0.05, 30.0);
 
   // BLE初期化

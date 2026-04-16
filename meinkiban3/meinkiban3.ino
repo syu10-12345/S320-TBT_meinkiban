@@ -62,6 +62,7 @@ struct ControlData
 struct NavigationData
 {
   float pitch;
+  float pitch_rate;  // ジャイロ Y軸 [°/s] — PID の D項に使用
 };
 struct FullTelemetryPacket
 {
@@ -161,6 +162,7 @@ class MyAdvertisedDeviceCallbacks : public NimBLEScanCallbacks
 unsigned long previousMillis = 0; // 前回の更新時間を保存
 const long interval = 120;        // 更新間隔（ミリ秒）
 double pitch = 0.0;
+double pitch_rate = 0.0;  // ジャイロ ピッチレート [°/s]
 double roll = 0.0;
 double heading = 0.0;
 double Altitude = 0.0;
@@ -359,7 +361,7 @@ void loop()
 
   static unsigned long lastPrint1 = 0;
   static unsigned long lastPrint2 = 50;
-  instrumentPanel.getPitchAndRoll(&pitch_rad, &roll_rad);
+  instrumentPanel.getPitchAndRoll(&pitch_rad, &roll_rad, &pitch_rate);
   // heading = instrumentPanel.getHeading(pitch_rad, roll_rad);
   instrumentPanel.updata(E_trim, air_speed, front_rpm, Altitude);
   pitch = pitch_rad * (180.0 / PI);
@@ -932,6 +934,7 @@ void bleControlTask(void *pvParameters)
       {
         NavigationData navData;
         navData.pitch = (float)pitch;
+        navData.pitch_rate = (float)pitch_rate;
         pCharControl->writeValue((uint8_t *)&navData, sizeof(NavigationData));
         lastBleSend = millis();
       }
