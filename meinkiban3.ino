@@ -5,15 +5,11 @@
 #include <ICM20948_WE.h>
 #include <TFT_eSPI.h>
 #include <SPI.h>
-#include <FS.h>           // 追加：WebServerより先に読み込む
-#include <LittleFS.h>     // 追加
-#include <WiFi.h>
+// WiFi, FS, LittleFS は未使用のため削除（フラッシュ節約）
 #include <time.h>
 #include <sys/time.h>
 
 #include "TFTand9axis_sensor.h"
-
-using namespace fs;       // 名前空間を明示
 
 Adafruit_MCP23X17 mcp;
 TFTand9axis_sensor instrumentPanel;
@@ -166,11 +162,11 @@ double roll_rad;
 double lat;
 double lon;
 double alt;
+float ref_alt; //基準となる高度
 double GNSS_heading;
 int fixType;
 int16_t rawPressure;
 double AIR_DENSITY;
-bool waitingForUltra = false;    // 超音波センサーの計測待ちフラグ
 unsigned long lastUltraTime = 0; // 最後に計測した時間を記録する変数
 TaskHandle_t displayTaskHandle; // タスクを管理するためのハンドル
 uint32_t epoch_time;
@@ -180,8 +176,6 @@ int day;
 int hour;
 int minute;
 int second; 
-double offset_roll = 0.0;
-double offset_pitch = 0.0;
 double slits = 16.0;
 // 前部(Photo1)用の変数
 volatile int pulseCount1 = 0;
@@ -298,19 +292,30 @@ void loop() {
   photo1 = digitalRead(PHOTO1_PIN);
   photo2 = digitalRead(PHOTO2_PIN);
   tktsw = digitalRead(tktsw_PIN);
-
-  //if(tktsw){
-  //  instrumentPanel.offsets();
-  //}
+  // タクトスイッチによるキャリブレーション（500ms長押し検知）
+  // GPIO35はプルダウン構成：未押下=LOW、押下=HIGH
+  {
+    static unsigned long highStartTime = 0;
+    static bool wasTriggered = false;
+    if (tktsw == HIGH) {
+      ref_alt = alt;
+      instrumentPanel.getRef_alt(ref_alt);
+      if (highStartTime == 0) highStartTime = millis();
+      if (!wasTriggered && millis() - highStartTime > 500) {
+        wasTriggered = true;
+        instrumentPanel.calibrate();
+      }
+    } else {
+      highStartTime = 0;
+      wasTriggered = false;
+    }
+  }
 
   if (millis() - lastUltraTime >= interval) {
-    if (waitingForUltra) {
+    if (ultra_active) {
       readAltimeter(); // 前回スタートに成功していれば、値を読み取る
-      if(Altitude < 765){
-        Altitude = Altitude / 100.0;
-      }else{
-        Altitude = alt;
-      }
+    }else{
+      Altitude = alt;
     }
     
     startAltimeter(); // 失敗していても、必ず次の測定開始合図を送って再挑戦する
@@ -338,10 +343,6 @@ void loop() {
   if (millis() - lastPrint2 >= interval) {
     loopGPS();
     sendAndoroid();
-    //Serial.printf(
-     // "Pitch:%6.1f deg | Roll:%6.1f deg | Alt:%4d cm | Photo1:%d | Photo2:%d | air_speed：%.3f | swich: %d\n",
-     // pitch, roll, distance, photo1, photo2, air_speed, tktsw
-    //);
     lastPrint2 = millis();
   }
 }
@@ -358,7 +359,6 @@ void MCP23017_LED(){
       mcp.pinMode(LED1, OUTPUT);
       mcp.pinMode(LED2, OUTPUT);
       mcp.pinMode(LED3, OUTPUT);
-        
       // 確実に消灯状態からスタートさせる
       mcp.digitalWrite(LED1, LOW);
       mcp.digitalWrite(LED2, LOW);
@@ -423,10 +423,8 @@ void startAltimeter() {
 
   if (Wire.endTransmission() == 0) {
     lastUltraTime = millis();
-    waitingForUltra = true;
     ultra_active = true;
   } else {
-    waitingForUltra = false;
     ultra_active = false;
   }
 }
@@ -438,8 +436,11 @@ void readAltimeter() {
     // 読み取り成功
     byte high = Wire.read();
     byte low  = Wire.read();
-    Altitude = (double)((high << 8) | low);
+    Altitude = ((double)((high << 8) | low) / 100) - 0.3;
     ultra_active = true;
+    if(Altitude > 7.60){
+      Altitude = alt;
+    }
   } else {
     // 読み取り失敗！ -> 即座にバスクリアと再初期化を行う
     Serial.println("I2C0 Error: Resetting Bus...");
@@ -458,7 +459,6 @@ void readAltimeter() {
     // （IMUの内部レジスタ設定が飛んでいない限りは通信可能です）
     // imu.init(); // 必要に応じてコメントアウトを外す
     
-    waitingForUltra = false; // フラグをリセットして次のループでstartAltimeterからやり直す
   }
 }
 
@@ -581,7 +581,7 @@ void setGPS(){
 void loopGPS(){
   lat = mygnss.get(GNSS_LATITUDE);
   lon = mygnss.get(GNSS_LONGITUDE);
-  alt = mygnss.get(GNSS_ALTITUDE);
+  alt = mygnss.get(GNSS_ALTITUDE) - ref_alt;
   GNSS_heading = mygnss.get(GNSS_HEADING);
   gnd_speed = mygnss.get(GNSS_SPEED);
   year = mygnss.get(GNSS_YEAR);
@@ -591,9 +591,9 @@ void loopGPS(){
   minute = mygnss.get(GNSS_MINUTE);
   second = mygnss.get(GNSS_SECOND);
   struct tm timeinfo;
-  if(0 < alt || alt <7.65){
+  if(0 < alt && alt <7.65){
     alt = 7.65;
-  }else if(alt < 0){
+  }else if(alt <= 0){
     alt = 0;
   }
   // ③ 箱に数字を流し込む（※年と月に「C言語特有の罠」があるので注意！）
