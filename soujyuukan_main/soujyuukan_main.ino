@@ -430,14 +430,16 @@ void mainloop(void *pvParameters) {
     LED は PID モード ON の合図。中立外で is_pid を落とすとボタン押下と無関係に消灯するため、
     中立外は手動舵角のままモードだけ維持し、積分はリセットしてウィンドアップを防ぐ。
     */
-    float tempDegE = 0.0f;
+    
     int krsE = ele2krs(degE);
     int krsR = rud2krs(degR);
+
+    float tempDegE = 0.0f;
+    tempDegE = (float)pidCompute(&pidElevator, errorE, currentPitchRate);
 
     if (is_pid) {
       digitalWrite(LED, HIGH);
       if (is_center) {
-        tempDegE = (float)pidCompute(&pidElevator, errorE, currentPitchRate);
         krsE = ele2krs(tempDegE + Trimelevetor);
       } else {
         pidReset(&pidElevator);

@@ -23,10 +23,8 @@ private:
     TFT_eSprite dynamicSprite;
     ICM20948_WE myIMU;
     Preferences _prefs;
-    Preferences _prefs;
 
     bool spritesOk = false;
-    bool _calibrated = false;
     bool _calibrated = false;
     TFT_eSPI *canvas = nullptr;
 
@@ -599,43 +597,6 @@ private:
         _prefs.end();
     }
 
-    bool loadOffsets()
-    {
-        _prefs.begin("imu_cal", true); // 読み取り専用
-        bool valid = _prefs.getBool("valid", false);
-        if (valid)
-        {
-            xyzFloat accOfs, gyrOfs;
-            accOfs.x = _prefs.getFloat("ax", 0);
-            accOfs.y = _prefs.getFloat("ay", 0);
-            accOfs.z = _prefs.getFloat("az", 0);
-            gyrOfs.x = _prefs.getFloat("gx", 0);
-            gyrOfs.y = _prefs.getFloat("gy", 0);
-            gyrOfs.z = _prefs.getFloat("gz", 0);
-            _prefs.end();
-            myIMU.setAccOffsets(accOfs);
-            myIMU.setGyrOffsets(gyrOfs);
-            return true;
-        }
-        _prefs.end();
-        return false;
-    }
-
-    void saveOffsets()
-    {
-        xyzFloat accOfs = myIMU.getAccOffsets();
-        xyzFloat gyrOfs = myIMU.getGyrOffsets();
-        _prefs.begin("imu_cal", false); // 書き込みモード
-        _prefs.putFloat("ax", accOfs.x);
-        _prefs.putFloat("ay", accOfs.y);
-        _prefs.putFloat("az", accOfs.z);
-        _prefs.putFloat("gx", gyrOfs.x);
-        _prefs.putFloat("gy", gyrOfs.y);
-        _prefs.putFloat("gz", gyrOfs.z);
-        _prefs.putBool("valid", true);
-        _prefs.end();
-    }
-
 public:
     TFTand9axis_sensor() : tft(), fixedSprite(&tft), dynamicSprite(&tft), myIMU(ICM20948_ADDR) {}
 
@@ -830,107 +791,6 @@ public:
     void getRef_alt(double a1t)
     {
         ref_alt = (float)a1t;
-    }
-
-    void drawCalStatus(const char *phase, int current = -1, int total = -1)
-    {
-        tft.fillRect(0, tft.height() / 2 - 30, tft.width(), 60, TFT_BLACK);
-        tft.setTextColor(TFT_WHITE, TFT_BLACK);
-        tft.setTextDatum(MC_DATUM);
-        tft.setTextSize(2);
-        if (current >= 0 && total > 0)
-        {
-            char buf[40];
-            snprintf(buf, sizeof(buf), "%s %d/%d", phase, current, total);
-            tft.drawString(buf, tft.width() / 2, tft.height() / 2);
-        }
-        else
-        {
-            tft.drawString(phase, tft.width() / 2, tft.height() / 2);
-        }
-    }
-
-    void calibrate()
-    {
-        Serial.println("Calibration started...");
-        tft.fillScreen(TFT_BLACK);
-
-        // autoOffsets()と同等の設定
-        myIMU.setGyrDLPF(ICM20948_DLPF_6);
-        myIMU.setGyrRange(ICM20948_GYRO_RANGE_250);
-        myIMU.setAccRange(ICM20948_ACC_RANGE_2G);
-        myIMU.setAccDLPF(ICM20948_DLPF_6);
-        delay(100);
-
-        // Phase 1: 安定化（300回空読み）
-        drawCalStatus("[CAL] Stabilizing", 0, 300);
-        for (int i = 0; i < 300; i++)
-        {
-            myIMU.readSensor();
-            delay(1);
-            if (i % 50 == 0)
-                drawCalStatus("[CAL] Stabilizing", i, 300);
-        }
-
-        // Phase 2: 加速度サンプリング（1000回）
-        xyzFloat accOfs = {0, 0, 0};
-        xyzFloat accRaw;
-        drawCalStatus("[CAL] Acc sampling", 0, 1000);
-        for (int i = 0; i < 1000; i++)
-        {
-            myIMU.readSensor();
-            myIMU.getAccRawValues(&accRaw);
-            accOfs.x += accRaw.x;
-            accOfs.y += accRaw.y;
-            accOfs.z += accRaw.z;
-            delay(1);
-            if (i % 50 == 0)
-                drawCalStatus("[CAL] Acc sampling", i, 1000);
-        }
-        accOfs.x /= 1000.0f;
-        accOfs.y /= 1000.0f;
-        accOfs.z /= 1000.0f;
-        accOfs.z -= 16384.0f; // 重力1G補正
-
-        // Phase 3: ジャイロサンプリング（1000回）
-        xyzFloat gyrOfs = {0, 0, 0};
-        xyzFloat gyrRaw;
-        drawCalStatus("[CAL] Gyr sampling", 0, 1000);
-        for (int i = 0; i < 1000; i++)
-        {
-            myIMU.readSensor();
-            myIMU.getGyrRawValues(&gyrRaw);
-            gyrOfs.x += gyrRaw.x;
-            gyrOfs.y += gyrRaw.y;
-            gyrOfs.z += gyrRaw.z;
-            delay(1);
-            if (i % 50 == 0)
-                drawCalStatus("[CAL] Gyr sampling", i, 1000);
-        }
-        gyrOfs.x /= 1000.0f;
-        gyrOfs.y /= 1000.0f;
-        gyrOfs.z /= 1000.0f;
-
-        // Phase 4: オフセット適用
-        myIMU.setAccOffsets(accOfs);
-        myIMU.setGyrOffsets(gyrOfs);
-
-        // Phase 5: NVS保存
-        drawCalStatus("[CAL] Saving NVS...");
-        saveOffsets();
-
-        // 完了
-        applyIMUSettings();
-        _calibrated = true;
-        drawCalStatus("[CAL] Done!");
-        Serial.println("Calibration saved to NVS");
-        delay(500);                // Done!を視認できるよう少し待つ
-        tft.fillScreen(TFT_BLACK); // 通常描画に戻る前に画面クリア
-    }
-
-    bool isCalibrated()
-    {
-        return _calibrated;
     }
 
     void updata(float torim, double IAS, double rpm, double ALT)
