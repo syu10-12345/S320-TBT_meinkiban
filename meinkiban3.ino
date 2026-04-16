@@ -314,6 +314,9 @@ void loop() {
   if (millis() - lastUltraTime >= interval) {
     if (ultra_active) {
       readAltimeter(); // 前回スタートに成功していれば、値を読み取る
+      if(Altitude < 0){
+        Altitude = 0;
+      }
     }else{
       Altitude = alt;
     }
