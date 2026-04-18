@@ -59,7 +59,7 @@ struct ControlData{
 };
 struct NavigationData{
   float pitch;
-  float pitch_rate;  // ジャイロ Y軸 [°/s] — PID の D項に使用
+  //float pitch_rate;  // ジャイロ Y軸 [°/s] — PID の D項に使用
 };
 struct FullTelemetryPacket{
   ControlData ctrl;
@@ -924,7 +924,7 @@ void bleControlTask(void *pvParameters)
       {
         NavigationData navData;
         navData.pitch = (float)pitch;
-        navData.pitch_rate = (float)pitch_rate;
+        //navData.pitch_rate = (float)pitch_rate;
         pCharControl->writeValue((uint8_t *)&navData, sizeof(NavigationData));
         lastBleSend = millis();
       }
