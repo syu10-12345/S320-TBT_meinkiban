@@ -1,4 +1,3 @@
-
 #include <Wire.h>
 #include <NimBLEDevice.h>
 #include <Adafruit_MCP23X17.h>
@@ -52,20 +51,17 @@ String electrical_errors = "[]";
 // ★追加1：BLE通信用の構造体と変数
 // ==========================================
 #pragma pack(push, 1)
-struct ControlData
-{
+struct ControlData{
   float E_steer, R_steer;
   float E_trim, E_angle, R_angle;
   float e_servo_temp, r_servo_temp;
   char control_mode[12];
 };
-struct NavigationData
-{
+struct NavigationData{
   float pitch;
   float pitch_rate;  // ジャイロ Y軸 [°/s] — PID の D項に使用
 };
-struct FullTelemetryPacket
-{
+struct FullTelemetryPacket{
   ControlData ctrl;
   NavigationData nav;
   float front_rpm, rear_rpm;
@@ -96,8 +92,7 @@ static void controlNotifyCallback(
     NimBLERemoteCharacteristic *pBLERemoteCharacteristic,
     uint8_t *pData,
     size_t length,
-    bool isNotify)
-{
+    bool isNotify){
   if (length == sizeof(ControlData))
   {
     ControlData *incoming = (ControlData *)pData;
@@ -193,7 +188,7 @@ int day;
 int hour;
 int minute;
 int second;
-double slits = 16.0;
+double slits = 8.0;
 // 前部(Photo1)用の変数
 volatile int pulseCount1 = 0;
 volatile unsigned long lastTime1 = 0;
@@ -246,7 +241,7 @@ void setup()
   clearI2CBus(I2C0_SDA, I2C0_SCL);
   clearI2CBus(I2C1_SDA, I2C1_SCL);
 
-  Serial.begin(115200);
+  //Serial.begin(115200);
   /* --- I2C0 : IMU 超音波センサ,9軸センサー --- */
   Wire.begin(I2C0_SDA, I2C0_SCL);
   Wire.setTimeOut(50);
@@ -278,7 +273,7 @@ void setup()
 
   if (mcp.begin_I2C(0x20, &Wire1))
   {
-    Serial.println("MCP23017 Init OK");
+    //Serial.println("MCP23017 Init OK");
     mcp.pinMode(LED1, OUTPUT);
     mcp.pinMode(LED2, OUTPUT);
     mcp.pinMode(LED3, OUTPUT);
@@ -286,7 +281,7 @@ void setup()
   }
   else
   {
-    Serial.println("MCP23017 Init Failed");
+    //Serial.println("MCP23017 Init Failed");
     mcp_active = false;
   }
 
@@ -296,9 +291,9 @@ void setup()
   delay(20);
 
   // NimBLEの初期設定
-  Serial.printf("[%lu] BLE: init begin\n", millis());
+  //Serial.printf("[%lu] BLE: init begin\n", millis());
   NimBLEDevice::init("WROOM-MASTER");
-  Serial.printf("[%lu] BLE: init done\n", millis());
+  //Serial.printf("[%lu] BLE: init done\n", millis());
   NimBLEScan *pScan = NimBLEDevice::getScan();
 
   // ★ここを setScanCallbacks に変更
@@ -345,13 +340,10 @@ void loop()
     if (ultra_active)
     {
       readAltimeter(); // 前回スタートに成功していれば、値を読み取る
-      if (Altitude < 0)
-      {
+      if (Altitude < 0){
         Altitude = 0;
       }
-    }
-    else
-    {
+    }else{
       Altitude = alt;
     }
 
@@ -396,7 +388,7 @@ void MCP23017_LED()
     // 応答あり
     if (!mcp_active)
     {
-      Serial.println("MCP23017 Recovered! Re-initializing pins...");
+      //Serial.println("MCP23017 Recovered! Re-initializing pins...");
       // begin_I2Cを呼ばずに、直接ピン設定だけをやり直す
       mcp.pinMode(LED1, OUTPUT);
       mcp.pinMode(LED2, OUTPUT);
@@ -413,7 +405,7 @@ void MCP23017_LED()
     // 応答なし（エラー状態）
     if (mcp_active)
     {
-      Serial.println("MCP23017 Connection Lost!");
+      //Serial.println("MCP23017 Connection Lost!");
     }
     mcp_active = false;
   }
@@ -499,7 +491,7 @@ void readAltimeter()
     byte low = Wire.read();
     Altitude = ((double)((high << 8) | low) / 100) - 0.3;
     ultra_active = true;
-    if (Altitude > 7.60)
+    if (Altitude > 7.30)
     {
       Altitude = alt;
     }
@@ -507,7 +499,7 @@ void readAltimeter()
   else
   {
     // 読み取り失敗！ -> 即座にバスクリアと再初期化を行う
-    Serial.println("I2C0 Error: Resetting Bus...");
+    //Serial.println("I2C0 Error: Resetting Bus...");
     ultra_active = false;
     Wire.end(); // ペリフェラルを一旦停止
 
@@ -535,10 +527,9 @@ bool startMeasurement()
   {
     return true;
   }
-  else
-  {
-    Serial.print("SDP810 Start Fail! Error: ");
-    Serial.println(error);
+  else{
+    //Serial.print("SDP810 Start Fail! Error: ");
+    //Serial.println(error);
     return false;
   }
 }
@@ -587,7 +578,7 @@ void readkisoku()
     {
       // パターンB: MCPも死んでいるなら、I2Cバスが完全にフリーズしている！
       // ここで初めて、バスの強制リセットと全員の再起動を行う
-      Serial.println("I2C1 Error: Resetting Bus...");
+      //Serial.println("I2C1 Error: Resetting Bus...");
       Wire1.end();
       clearI2CBus(I2C1_SDA, I2C1_SCL);
       Wire1.begin(I2C1_SDA, I2C1_SCL);
@@ -601,12 +592,12 @@ void readkisoku()
         mcp.pinMode(LED2, OUTPUT);
         mcp.pinMode(LED3, OUTPUT);
         mcp_active = true;
-        Serial.println("MCP23017 Recovered!");
+        //Serial.println("MCP23017 Recovered!");
       }
       else
       {
         mcp_active = false;
-        Serial.println("MCP23017 Recovery Failed.");
+        //Serial.println("MCP23017 Recovery Failed.");
       }
       startMeasurement();
     }
@@ -651,16 +642,14 @@ void clearI2CBus(int sdaPin, int sclPin)
   gpio_pullup_dis((gpio_num_t)sclPin);
 }
 
-void setGPS()
-{
+void setGPS(){
   // Attach AndroidSerial to main Serial (USB)
   myAndroid.attach(115200);
   // Attach GNSS (Baud, RX, TX, UART#)
   mygnss.attach(921600, 16, 17, 1);
 }
 
-void loopGPS()
-{
+void loopGPS(){
   lat = mygnss.get(GNSS_LATITUDE);
   lon = mygnss.get(GNSS_LONGITUDE);
   alt = mygnss.get(GNSS_ALTITUDE) - ref_alt;
@@ -673,9 +662,9 @@ void loopGPS()
   minute = mygnss.get(GNSS_MINUTE);
   second = mygnss.get(GNSS_SECOND);
   struct tm timeinfo;
-  if (0 < alt && alt < 7.65)
+  if (0 < alt && alt < 7.30)
   {
-    alt = 7.65;
+    alt = 7.3;
   }
   else if (alt <= 0)
   {
@@ -691,6 +680,7 @@ void loopGPS()
   epoch_time = mktime(&timeinfo);
 
   fixType = (int)mygnss.get(GNSS_FIX_TYPE);
+  fixType = 3;
 }
 
 void sendAndoroid()
@@ -1029,8 +1019,7 @@ void bleLoggerTask(void *pvParameters)
     }
     else
     {
-      if (connectedLogger)
-      {
+      if (connectedLogger){
         pClientLogger->disconnect();
         connectedLogger = false;
         Serial.println("Logger Disconnected (Switch OFF)");
@@ -1039,8 +1028,7 @@ void bleLoggerTask(void *pvParameters)
     vTaskDelay(10 / portTICK_PERIOD_MS);
   }
 }
-void confirmICM()
-{
+void confirmICM(){
   Wire.beginTransmission(0x68); // ※もし常にエラーになる場合は 0x69 に変えてみてください
   if (Wire.endTransmission() == 0)
   {
