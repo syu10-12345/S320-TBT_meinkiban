@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git fetch *)"
+      "Bash(git fetch *)",
+      "Bash(git -C \"C:/Users/baiji/OneDrive/ドキュメント/Arduino/S320-TBT_meinkiban\" show eaa442d --stat)",
+      "Bash(git -C \"C:/Users/baiji/OneDrive/ドキュメント/Arduino/S320-TBT_meinkiban\" show b1ab9fd --stat)",
+      "Bash(git -C \"C:/Users/baiji/OneDrive/ドキュメント/Arduino/S320-TBT_meinkiban\" show cefc13a --stat)",
+      "Bash(git *)"
     ]
   }
 }
