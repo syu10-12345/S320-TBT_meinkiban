@@ -53,6 +53,10 @@ volatile String electrical_errors = "[]";
 static const uint8_t WIFI_CHANNEL = 6;
 static uint8_t BROADCAST_MAC[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 
+// ESP-NOW はコネクションレスなので、最終受信時刻で疎通を判定する
+static volatile uint32_t g_lastRecvFromSoujyuukanMs = 0;
+static const uint32_t LINK_TIMEOUT_MS = 500;
+
 
 // ==========================================
 #pragma pack(push, 1)
@@ -104,6 +108,7 @@ void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
   e_servo_temp = pkt.e_servo_temp;
   r_servo_temp = pkt.r_servo_temp;
   control_mode = String(pkt.control_mode);
+  g_lastRecvFromSoujyuukanMs = millis();
 }
 
 void onSent(const wifi_tx_info_t *tx_info, esp_now_send_status_t status) {
@@ -684,14 +689,13 @@ void sendAndoroid() {
     errors.add(201);  // 9軸センサーエラー
     errors.add(403);
   }
-  if (!connectedControl)
-    errors.add(500);  // 操縦桿との通信エラー
+  if (millis() - g_lastRecvFromSoujyuukanMs > LINK_TIMEOUT_MS)
+    errors.add(500);  // 操縦桿との通信エラー (ESP-NOW: 500ms 無音で判定)
   if (e_servo_temp < 5)
     errors.add(501);  // エレベーターサーボ温度異常
   if (r_servo_temp < 5)
     errors.add(502);  // ラダーサーボ温度異常
-  if (!connectedLogger)
-    errors.add(600);  // ロガーとの通信エラー
+  // 600 (ロガー通信エラー) はロガーからのハートビート実装後に復活予定
   for (JsonVariant e : errors) {
     myAndroid.addError(e.as<int>());
   }
