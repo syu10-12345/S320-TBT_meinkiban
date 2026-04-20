@@ -31,6 +31,10 @@ const int trimR2 = 10;         //トリムラダー
 volatile float currentPitch = 0.0f;
 volatile float currentPitchRate = 0.0f;
 
+// 通信断検知用: 最後に meinkiban3 から受信した時刻
+volatile uint32_t g_lastPitchRecvMs = 0;
+static const uint32_t PITCH_LINK_TIMEOUT_MS = 300;  // 300ms 無音で PID 停止
+
 
 #pragma pack(push, 1)
 struct ControlData {
@@ -64,6 +68,7 @@ void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
   if (pkt.role != ROLE_MEINKIBAN3) return;
   currentPitch = pkt.pitch;
   currentPitchRate = pkt.pitch_rate;
+  g_lastPitchRecvMs = millis();
 }
 
 
@@ -399,7 +404,10 @@ void mainloop(void *pvParameters) {
     float tempDegE = 0.0f;
     tempDegE = (float)pidCompute(&pidElevator, errorE, currentPitchRate);
 
-    if (is_pid) {
+    // 通信断フェイルセーフ: 300ms pitch を受信していなければ PID を使わない
+    bool pitchLinkOk = (millis() - g_lastPitchRecvMs < PITCH_LINK_TIMEOUT_MS);
+
+    if (is_pid && pitchLinkOk) {
       digitalWrite(LED, HIGH);
       if (is_center) {
         krsE = ele2krs(tempDegE + Trimelevetor);
@@ -407,6 +415,7 @@ void mainloop(void *pvParameters) {
         pidReset(&pidElevator);
       }
     } else {
+      // PID OFF か通信断時は手動入力のまま、PID はリセット
       digitalWrite(LED, LOW);
       pidReset(&pidElevator);
     }
