@@ -28,8 +28,8 @@ const int trimR2 = 10;         //トリムラダー
 
 
 
-float currentPitch = 0.0f;
-float currentPitchRate = 0.0f;
+volatile float currentPitch = 0.0f;
+volatile float currentPitchRate = 0.0f;
 
 
 #pragma pack(push, 1)
