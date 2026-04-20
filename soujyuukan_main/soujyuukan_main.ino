@@ -472,6 +472,30 @@ void setup() {
   pidInit(&pidElevator, -1.0, -0.1, -0.05, 30.0);  // Kd=-0.05 : ジャイロD項有効化, integralMax [°]
   pidInit(&pidRudder, 1.0, 0.1, 0.05, 30.0);
 
+  // ESP-NOW 初期化
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  Serial.print("自分の MAC: ");
+  Serial.println(WiFi.macAddress());
+  esp_wifi_set_channel(WIFI_CHANNEL, WIFI_SECOND_CHAN_NONE);
+
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("[error] esp_now_init 失敗");
+    while (1) delay(1000);
+  }
+
+  esp_now_peer_info_t peer = {};
+  memcpy(peer.peer_addr, BROADCAST_MAC, 6);
+  peer.channel = WIFI_CHANNEL;
+  peer.encrypt = false;
+  if (esp_now_add_peer(&peer) != ESP_OK) {
+    Serial.println("[error] add_peer 失敗");
+    while (1) delay(1000);
+  }
+
+  esp_now_register_recv_cb(onRecv);
+  Serial.println("ESP-NOW 初期化完了");
+
   // 各タスクの生成
   xTaskCreate(nvmTask, "nvmTask", 4096, NULL, 2, &nvmTaskHandle);
   xTaskCreate(mainloop, "mainloop", 10000, NULL, 10, NULL);
