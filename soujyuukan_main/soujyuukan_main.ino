@@ -423,20 +423,22 @@ void mainloop(void *pvParameters) {
       tempReadCounter = 0;
     }
 
-    // BLE送信
-    // E_steer/R_steer: ADC をそのまま
-    // E_trim: エレベータのトリム角 [°]（KRS に変換する前の生の度数値を送信）
-    // E_angle/R_angle: getPos の KRS から多項式の逆映射で実舵角[°]（分度器と同じ定義）
-    // e_servo_temp / r_servo_temp: 近藤 ICS getTmp の戻り値。仕様上は摂氏[℃]（公式マニュアルで最終確認推奨）
     ControlData nv:
     nv.magic = MAGIC;
     nv.role = ROLE_SOUJYUUKAN;
-    float E_steer, R_steer;
-    float E_trim, E_angle, R_angle;
-    float e_servo_temp, r_servo_temp;
     char control_mode[12];
     nv.E_steer = rawEle;
     nv.R_steer = rawRud;
+    nv.E_trim = Trimelevetor;
+    nv.E_angle = getpos1
+    nv.R_angle = getpos0
+    nv.e_servo_temp = cachedTempE;
+    nv.r_servo_temp = cachedTempR;
+    if(is_pid){
+      strcpy(nv.control_mode,"auto")
+    }else{
+      strcpy(nv.control_mode,"manual")
+    }
     
     esp_now_send(BROADCAST_MAC, (uint8_t*)&nv, sizeof(nv));
 
@@ -467,25 +469,6 @@ void setup() {
 
   pidInit(&pidElevator, -1.0, -0.1, -0.05, 30.0);  // Kd=-0.05 : ジャイロD項有効化, integralMax [°]
   pidInit(&pidRudder, 1.0, 0.1, 0.05, 30.0);
-
-  // BLE初期化
-  Serial.printf("[%lu] BLE: init begin\n", millis());
-  BLEDevice::init("C3-CONTROL");
-  Serial.printf("[%lu] BLE: init done\n", millis());
-  BLEServer* pServer = BLEDevice::createServer();
-  pServer->setCallbacks(new MyServerCallbacks());
-  BLEService* pService = pServer->createService(SERVICE_UUID);
-  pCharacteristic = pService->createCharacteristic(
-    CHAR_UUID,
-    BLECharacteristic::PROPERTY_READ |
-    BLECharacteristic::PROPERTY_WRITE |
-    BLECharacteristic::PROPERTY_NOTIFY
-  );
-  pCharacteristic->addDescriptor(new BLE2902());
-  pCharacteristic->setCallbacks(new MyCharCallbacks());
-  pService->start();
-  pServer->getAdvertising()->start();
-  Serial.printf("[%lu] BLE: advertising as C3-CONTROL\n", millis());
 
   // 各タスクの生成
   xTaskCreate(nvmTask, "nvmTask", 4096, NULL, 2, &nvmTaskHandle);
