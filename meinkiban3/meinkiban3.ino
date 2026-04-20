@@ -200,7 +200,7 @@ void setup() {
   clearI2CBus(I2C0_SDA, I2C0_SCL);
   clearI2CBus(I2C1_SDA, I2C1_SCL);
 
-  //Serial.begin(115200);
+  Serial.begin(115200);
   /* --- I2C0 : IMU 超音波センサ,9軸センサー --- */
   Wire.begin(I2C0_SDA, I2C0_SCL);
   Wire.setTimeOut(50);
