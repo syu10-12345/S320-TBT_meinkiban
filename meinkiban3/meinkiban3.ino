@@ -100,10 +100,11 @@ void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
   R_steer = pkt.R_steer;
   E_trim = pkt.E_trim;
   E_angle = pkt.E_angle;
-  R_rangle = pkt.R_rangle;
+  R_angle = pkt.R_angle;
   e_servo_temp = pkt.e_servo_temp;
   r_servo_temp = pkt.r_servo_temp;
-};
+  control_mode = String(pkt.control_mode);
+}
 
 void onSent(const wifi_tx_info_t *tx_info, esp_now_send_status_t status) {
   if (status != ESP_NOW_SEND_SUCCESS) {
@@ -333,10 +334,8 @@ void sendCtrlStick() {
   navData.role = ROLE_MEINKIBAN3;
   navData.pitch = (float)pitch;
   navData.pitch_rate = (float)pitch_rate;
-  esp_err_t r = esp_now_send(BROADCAST_MAC, (uint8_t *)&pkt, sizeof(pkt));
-  if (r == ESP_OK) {
-    Serial.printf("[send] pitch=%u pitch_rate=%.2f\n", navData.pitch, navData.pitch_rate);
-  } else {
+  esp_err_t r = esp_now_send(BROADCAST_MAC, (uint8_t *)&navData, sizeof(navData));
+  if (r != ESP_OK) {
     Serial.printf("[send] error code=%d\n", r);
   }
 }
@@ -373,7 +372,7 @@ void sendLogger() {
 
   strncpy(packet.ctrl.control_mode, control_mode.c_str(), sizeof(packet.ctrl.control_mode) - 1);
 
-  esp_err_t r = esp_now_send(BROADCAST_MAC, (uint8_t*)&pkt, sizeof(pkt));
+  esp_err_t r = esp_now_send(BROADCAST_MAC, (uint8_t*)&packet, sizeof(packet));
   if (r != ESP_OK) {
     //Serial.printf("[send] error code=%d\n", r);
   }
