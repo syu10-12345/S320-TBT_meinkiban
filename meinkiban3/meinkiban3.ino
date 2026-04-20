@@ -361,6 +361,7 @@ void sendCtrlStick() {
 
 void sendLogger() {
   FullTelemetryPacket packet;
+  memset(&packet, 0, sizeof(packet));  // 未代入フィールドのゴミ値を防ぐ
 
   packet.nav.pitch = (float)pitch;
 
