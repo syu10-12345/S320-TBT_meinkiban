@@ -309,11 +309,18 @@ void loop() {
 
   static unsigned long lastPrint1 = 0;
   static unsigned long lastPrint2 = 50;
+  static unsigned long lastCtrlSend = 0;
   instrumentPanel.getPitchAndRoll(&pitch_rad, &roll_rad, &pitch_rate);
   // heading = instrumentPanel.getHeading(pitch_rad, roll_rad);
   instrumentPanel.updata(E_trim, air_speed, front_rpm, Altitude);
   pitch = pitch_rad * (180.0 / PI);
   roll = roll_rad * (180.0 / PI);
+
+  // 操縦桿基板へ pitch/pitch_rate を定期送信 (50Hz 相当)
+  if (millis() - lastCtrlSend >= 20) {
+    sendCtrlStick();
+    lastCtrlSend = millis();
+  }
 
   if (millis() - lastPrint1 >= interval) {
     tgrsw = digitalRead(tgrsw_PIN);
