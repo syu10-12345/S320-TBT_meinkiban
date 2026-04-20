@@ -2,55 +2,11 @@
 #include <IcsHardSerialClass.h>
 #include <freertos/FreeRTOS.h>
 #include <Preferences.h>
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLE2902.h>
 #include "PidState.h"
 
-// BLE設定
-#define SERVICE_UUID "AAAA0001-1fb5-459e-8fcc-c5c9c331914b"
-#define CHAR_UUID    "AAAA0002-36e1-4688-b7f5-ea07361b26a8"
 
-#pragma pack(push, 1)
-struct ControlData {
-  float E_steer, R_steer;
-  float E_trim, E_angle, R_angle;
-  float e_servo_temp, r_servo_temp;
-  char control_mode[12];
-};
-struct NavigationData {
-  float pitch;
-  float pitch_rate;  // ジャイロ Y軸 [°/s] — PID の D項に使用
-};
-#pragma pack(pop)
 
-BLECharacteristic* pCharacteristic = NULL;
-bool bleConnected = false;
 
-class MyServerCallbacks : public BLEServerCallbacks {
-  void onConnect(BLEServer* pServer) {
-    bleConnected = true;
-    Serial.printf("[%lu] BLE: connected\n", millis());
-  }
-  void onDisconnect(BLEServer* pServer) {
-    bleConnected = false;
-    Serial.printf("[%lu] BLE: disconnected, restart advertising\n", millis());
-    pServer->getAdvertising()->start();
-  }
-};
-volatile float currentPitch = 0.0;      // 姿勢角（ピッチ）[°]
-volatile float currentPitchRate = 0.0;  // ピッチレート [°/s]
-class MyCharCallbacks : public BLECharacteristicCallbacks {
-  void onWrite(BLECharacteristic* pChar) {
-    uint8_t* data = pChar->getData();
-    size_t len = pChar->getLength();
-    if (len == sizeof(NavigationData)) {
-      NavigationData* incoming = (NavigationData*)data;
-      currentPitch = incoming->pitch;
-      currentPitchRate = incoming->pitch_rate;
-    }
-  }
-};
 
 Preferences preferences;
 TaskHandle_t nvmTaskHandle = NULL;
@@ -66,6 +22,46 @@ const int LED = 5;
 const int resetPin = 6;        // NVMリセット用ピンを変更 (GPIO 0番ピンをGNDとショートでリセット)
 const int trimR1 = 9;          //トリムラダー
 const int trimR2 = 10;         //トリムラダー
+
+
+
+float currentPitch = null;
+float currentPitchRate = null;
+
+
+#pragma pack(push, 1)
+struct ControlData {
+  uint32_t magic;
+  uint8_t role;
+  float E_steer, R_steer;
+  float E_trim, E_angle, R_angle;
+  float e_servo_temp, r_servo_temp;
+  char control_mode[12];
+};
+struct NavigationData {
+  uint32_t magic;
+  uint8_t role;
+  float pitch;
+  float pitch_rate;
+};
+#pragma pack(pop)
+static const uint8_t WIFI_CHANNEL = 1;
+static uint8_t BROADCAST_MAC[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+#define MAGIC = 0x53333230;
+#define ROLE_MEINKIBAN3 1
+#define ROLE_SOUJYUUKAN 2
+#define ROLE_LOGGER 3
+
+void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len){
+  if (len != sizeof(ControlData)) return;
+  ControlData pkt;
+  memcpy(&pkt, data, sizeof(pkt));
+  if (pkt.magic != MAGIC) return;
+  if (pkt.role != ROLE_MEINKIBAN3) return;
+  currentPitch = pkt.pitch;
+  currentPitchRate = pkt.pitch_rate;
+}
+
 
 /*
 ここがめっちゃ重要。詳しくは同じディレクトリにある。.docsを参照
@@ -94,7 +90,7 @@ float krs2rud(float x) {
 float ElevatorDegMin = -5;
 float ElevatorDegMed = 0;
 float ElevatorDegMax = 5;
-float RudderDegMin = -10.1;
+float RudderDegMin = -9.3;//-10.1
 float RudderDegMax = 9.3;
 
 IcsHardSerialClass krs(&Serial0, EN_PIN, BAUDRATE, TIMEOUT);  //インスタンス＋ENピン(8番ピン)およびUARTの指定
@@ -169,44 +165,6 @@ void nvmTask(void *pvParameters) {
     preferences.putFloat("trimR", Trimrudder);
     preferences.end();
     Serial.println(">> Settings saved to NVM");
-  }
-}
-
-// リセットピンを常時監視するタスク
-void resetMonitorTask(void *pvParameters) {
-
-  while (1) {
-    if (digitalRead(resetPin) == HIGH) {
-      // チャタリング防止の少しの待機
-      vTaskDelay(50 / portTICK_PERIOD_MS);
-
-      if (digitalRead(resetPin) == HIGH) {
-        Serial.println("!!! NVM Reset Triggered !!!");
-        preferences.begin("trim-data", false);
-        preferences.clear();
-        preferences.end();
-
-        // メモリ上の値も初期化
-        Trimelevetor = 0.0;
-        neutralTrimeEle = 0.0;
-        Trimrudder = 0.0;
-
-        // リセット成功の合図としてLEDを高速点滅(5回)
-        for (int i = 0; i < 5; i++) {
-          digitalWrite(LED, HIGH);
-          vTaskDelay(100 / portTICK_PERIOD_MS);
-          digitalWrite(LED, LOW);
-          vTaskDelay(100 / portTICK_PERIOD_MS);
-        }
-
-        // ボタンが離されるまで待機（無限リセットループを防止）
-        while (digitalRead(resetPin) == HIGH) {
-          vTaskDelay(100 / portTICK_PERIOD_MS);
-        }
-      }
-    }
-    // 100msごとにボタンの状態をチェック
-    vTaskDelay(100 / portTICK_PERIOD_MS);
   }
 }
 
@@ -466,26 +424,21 @@ void mainloop(void *pvParameters) {
     }
 
     // BLE送信
-    // E_steer/R_steer: 中央値＋ローパス後の ADC をレバー歪みを [-30,30] に線形正規化
+    // E_steer/R_steer: ADC をそのまま
     // E_trim: エレベータのトリム角 [°]（KRS に変換する前の生の度数値を送信）
     // E_angle/R_angle: getPos の KRS から多項式の逆映射で実舵角[°]（分度器と同じ定義）
     // e_servo_temp / r_servo_temp: 近藤 ICS getTmp の戻り値。仕様上は摂氏[℃]（公式マニュアルで最終確認推奨）
-    if (bleConnected && pCharacteristic != NULL) {
-      ControlData txData;
-      float adcE = constrain((float)g_filteredEleAdc, (float)elergs[0], (float)elergs[3]);
-      float adcR = constrain((float)g_filteredRudAdc, (float)rudrgs[0], (float)rudrgs[3]);
-      txData.E_steer = fmap(adcE, (float)elergs[0], (float)elergs[3], -30.f, 30.f);
-      txData.R_steer = fmap(adcR, (float)rudrgs[0], (float)rudrgs[3], -30.f, 30.f);
-      txData.E_trim = Trimelevetor;
-      txData.E_angle = (getpos1 != -1) ? krs2ele((float)getpos1) : 0.f;
-      txData.R_angle = (getpos0 != -1) ? krs2rud((float)getpos0) : 0.f;
-      txData.e_servo_temp = cachedTempE;
-      txData.r_servo_temp = cachedTempR;
-      memset(txData.control_mode, 0, sizeof(txData.control_mode));
-      strncpy(txData.control_mode, is_pid ? "assisted" : "manual", sizeof(txData.control_mode) - 1);
-      pCharacteristic->setValue((uint8_t*)&txData, sizeof(ControlData));
-      pCharacteristic->notify();
-    }
+    ControlData nv:
+    nv.magic = MAGIC;
+    nv.role = ROLE_SOUJYUUKAN;
+    float E_steer, R_steer;
+    float E_trim, E_angle, R_angle;
+    float e_servo_temp, r_servo_temp;
+    char control_mode[12];
+    nv.E_steer = rawEle;
+    nv.R_steer = rawRud;
+    
+    esp_now_send(BROADCAST_MAC, (uint8_t*)&nv, sizeof(nv));
 
     Serial.printf("E:%.1f R:%.1f krs:%d,%d raw:%d,%d getPos:%d,%d pitch:%.1f pid:%.1f\n", degE, degR, krsE, krsR, rawEle, rawRud, getpos0, getpos1, currentPitch, tempDegE);
 
@@ -503,8 +456,6 @@ void setup() {
   loadSettings();
 
   krs.begin();
-  krs.setSpd(0, 127);
-  krs.setSpd(1, 127);
 
   pinMode(r_elevator, INPUT);
   pinMode(r_rudder, INPUT);
@@ -538,7 +489,6 @@ void setup() {
 
   // 各タスクの生成
   xTaskCreate(nvmTask, "nvmTask", 4096, NULL, 2, &nvmTaskHandle);
-  xTaskCreate(resetMonitorTask, "resetMonitor", 2048, NULL, 5, NULL);  // リセット監視タスクを追加
   xTaskCreate(mainloop, "mainloop", 10000, NULL, 10, NULL);
 }
 
