@@ -581,3 +581,9 @@ const theta_dot_target = Kp_outer * error_angle + Ki_outer * p.integral_outer;
 
 4. **ゲインスケジューリングの効果**
    - V = 6, 8, 12 m/s で固定ゲインとスケジューリングの差を比較
+
+
+
+C3-LOGGERもesp32c3です。こちらにはSDカードモジュールが突き刺さってます。
+
+BLE選定の理由は交換速度です。例えば操縦桿基盤が謎に動かない場合予備と交換します。
