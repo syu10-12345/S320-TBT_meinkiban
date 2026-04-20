@@ -50,7 +50,7 @@ volatile String control_mode = "manual";  // "manual" or "assisted"
 volatile String electrical_errors = "[]";
 
 
-static const uint8_t WIFI_CHANNEL = 6;
+static const uint8_t WIFI_CHANNEL = 1;
 static uint8_t BROADCAST_MAC[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 
 // ESP-NOW はコネクションレスなので、最終受信時刻で疎通を判定する
