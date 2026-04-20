@@ -238,42 +238,14 @@ int RUD;
 int elergs[4] = { 1120, 1590, 1870, 2460 };  // エレベーター: 前限界, 前戻り, 後戻り, 後限界
 int rudrgs[4] = { 1550, 2120, 2520, 3100 };
 
-const int hisSize = 5;//getMedianの中のtemp配列の大きさを気にする
-int eleHistory[hisSize]={0};
-int rudHistory[hisSize]={0};
-
-int prefELE = 0;
-int prefRud = 0;
 int is_center = 0;
-// detzone へ入れる直前のフィルタ済み ADC（BLE の E_steer/R_steer 用）
-int g_filteredEleAdc = 0;
-int g_filteredRudAdc = 0;
-
 void Potentiometer() {
 
-  for (int i = 0;i < hisSize-1;i++){
-    eleHistory[i] = eleHistory[i+1];
-    rudHistory[i] = rudHistory[i+1];
-  }
   rawEle = analogRead(r_elevator);
   rawRud = analogRead(r_rudder);
-  eleHistory[hisSize-1] = rawEle;
-  rudHistory[hisSize-1] = rawRud;
-  ELE = getMedian(eleHistory,hisSize);
-  RUD = getMedian(rudHistory,hisSize);
 
-  float alfa = 0.3;
-  int fELE = ELE*alfa + prefELE*(1-alfa);
-  prefELE = fELE;
-
-  int fRUD = RUD*alfa + prefRud*(1-alfa);
-  prefRud = fRUD;
-
-  g_filteredEleAdc = fELE;
-  g_filteredRudAdc = fRUD;
-
-  is_center = detzoneMapping(elergs, fELE, &elevetor, ElevatorDegMax, ElevatorDegMed, ElevatorDegMin);
-  detzoneMapping(rudrgs, fRUD, &rudder, RudderDegMin, (RudderDegMin+RudderDegMax)/2, RudderDegMax);
+  is_center = detzoneMapping(elergs, rawEle, &elevetor, ElevatorDegMax, ElevatorDegMed, ElevatorDegMin);
+  detzoneMapping(rudrgs, rawRud, &rudder, RudderDegMin, (RudderDegMin+RudderDegMax)/2, RudderDegMax);
 }
 
 unsigned long lastPushed = millis();  //ボタン4チャタリング防止用
@@ -436,14 +408,14 @@ void mainloop(void *pvParameters) {
       tempReadCounter = 0;
     }
 
-    // E_steer/R_steer: フィルタ済み ADC を [-30, 30] に正規化
+    // E_steer/R_steer: 生 ADC 値 (フィルタ外し済) を [-30, 30] に正規化
     // E_angle/R_angle: getPos の KRS 値を多項式で実舵角[°]に変換 (-1 ガード)
     // control_mode: PID 状態を文字列で送信 (ロガー互換のため "assisted"/"manual")
     ControlData nv;
     nv.magic = MAGIC;
     nv.role = ROLE_SOUJYUUKAN;
-    float adcE = constrain((float)g_filteredEleAdc, (float)elergs[0], (float)elergs[3]);
-    float adcR = constrain((float)g_filteredRudAdc, (float)rudrgs[0], (float)rudrgs[3]);
+    float adcE = constrain((float)rawEle, (float)elergs[0], (float)elergs[3]);
+    float adcR = constrain((float)rawRud, (float)rudrgs[0], (float)rudrgs[3]);
     nv.E_steer = fmap(adcE, (float)elergs[0], (float)elergs[3], -30.f, 30.f);
     nv.R_steer = fmap(adcR, (float)rudrgs[0], (float)rudrgs[3], -30.f, 30.f);
     nv.E_trim = Trimelevetor;
