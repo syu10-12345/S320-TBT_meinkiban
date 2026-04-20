@@ -322,6 +322,13 @@ void loop() {
     lastCtrlSend = millis();
   }
 
+  // トリガスイッチ ON のときだけロガーへフルテレメトリを送信 (50Hz 相当)
+  static unsigned long lastLoggerSend = 0;
+  if (tgrsw == HIGH && millis() - lastLoggerSend >= 20) {
+    sendLogger();
+    lastLoggerSend = millis();
+  }
+
   if (millis() - lastPrint1 >= interval) {
     tgrsw = digitalRead(tgrsw_PIN);
     readkisoku();
