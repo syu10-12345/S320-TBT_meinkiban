@@ -81,7 +81,7 @@ struct FullTelemetryPacket {
   bool electrical_errors[12];
 };
 #pragma pack(pop)
-#define MAGIC = 0x53333230;
+#define MAGIC 0x53333230u
 #define ROLE_MEINKIBAN3 1
 #define ROLE_SOUJYUUKAN 2
 #define ROLE_LOGGER 3

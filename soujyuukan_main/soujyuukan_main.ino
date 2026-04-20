@@ -47,7 +47,7 @@ struct NavigationData {
 #pragma pack(pop)
 static const uint8_t WIFI_CHANNEL = 1;
 static uint8_t BROADCAST_MAC[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-#define MAGIC = 0x53333230;
+#define MAGIC 0x53333230u
 #define ROLE_MEINKIBAN3 1
 #define ROLE_SOUJYUUKAN 2
 #define ROLE_LOGGER 3
@@ -443,7 +443,6 @@ void mainloop(void *pvParameters) {
     esp_now_send(BROADCAST_MAC, (uint8_t*)&nv, sizeof(nv));
 
     Serial.printf("E:%.1f R:%.1f krs:%d,%d raw:%d,%d getPos:%d,%d pitch:%.1f pid:%.1f\n", degE, degR, krsE, krsR, rawEle, rawRud, getpos0, getpos1, currentPitch, tempDegE);
-
 
     vTaskDelayUntil(&xLastWakeTime, xFrequency);
   }
