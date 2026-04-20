@@ -427,21 +427,23 @@ void mainloop(void *pvParameters) {
       tempReadCounter = 0;
     }
 
+    // E_steer/R_steer: フィルタ済み ADC を [-30, 30] に正規化
+    // E_angle/R_angle: getPos の KRS 値を多項式で実舵角[°]に変換 (-1 ガード)
+    // control_mode: PID 状態を文字列で送信 (ロガー互換のため "assisted"/"manual")
     ControlData nv;
     nv.magic = MAGIC;
     nv.role = ROLE_SOUJYUUKAN;
-    nv.E_steer = rawEle;
-    nv.R_steer = rawRud;
+    float adcE = constrain((float)g_filteredEleAdc, (float)elergs[0], (float)elergs[3]);
+    float adcR = constrain((float)g_filteredRudAdc, (float)rudrgs[0], (float)rudrgs[3]);
+    nv.E_steer = fmap(adcE, (float)elergs[0], (float)elergs[3], -30.f, 30.f);
+    nv.R_steer = fmap(adcR, (float)rudrgs[0], (float)rudrgs[3], -30.f, 30.f);
     nv.E_trim = Trimelevetor;
-    nv.E_angle = getpos1;
-    nv.R_angle = getpos0;
+    nv.E_angle = (getpos1 != -1) ? krs2ele((float)getpos1) : 0.f;
+    nv.R_angle = (getpos0 != -1) ? krs2rud((float)getpos0) : 0.f;
     nv.e_servo_temp = cachedTempE;
     nv.r_servo_temp = cachedTempR;
-    if (is_pid) {
-      strcpy(nv.control_mode, "auto");
-    } else {
-      strcpy(nv.control_mode, "manual");
-    }
+    memset(nv.control_mode, 0, sizeof(nv.control_mode));
+    strncpy(nv.control_mode, is_pid ? "assisted" : "manual", sizeof(nv.control_mode) - 1);
 
     esp_now_send(BROADCAST_MAC, (uint8_t*)&nv, sizeof(nv));
 
