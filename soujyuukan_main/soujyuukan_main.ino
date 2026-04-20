@@ -55,9 +55,10 @@ static uint8_t BROADCAST_MAC[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 #define ROLE_SOUJYUUKAN 2
 #define ROLE_LOGGER 3
 
-void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len){
-  if (len != sizeof(ControlData)) return;
-  ControlData pkt;
+void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
+  // meinkiban3 から来る NavigationData (pitch, pitch_rate) を受信する
+  if (len != sizeof(NavigationData)) return;
+  NavigationData pkt;
   memcpy(&pkt, data, sizeof(pkt));
   if (pkt.magic != MAGIC) return;
   if (pkt.role != ROLE_MEINKIBAN3) return;
