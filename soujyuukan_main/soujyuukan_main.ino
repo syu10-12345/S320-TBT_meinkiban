@@ -28,8 +28,8 @@ const int trimR2 = 10;         //トリムラダー
 
 
 
-float currentPitch = null;
-float currentPitchRate = null;
+float currentPitch = 0.0f;
+float currentPitchRate = 0.0f;
 
 
 #pragma pack(push, 1)
@@ -426,23 +426,22 @@ void mainloop(void *pvParameters) {
       tempReadCounter = 0;
     }
 
-    ControlData nv:
+    ControlData nv;
     nv.magic = MAGIC;
     nv.role = ROLE_SOUJYUUKAN;
-    char control_mode[12];
     nv.E_steer = rawEle;
     nv.R_steer = rawRud;
     nv.E_trim = Trimelevetor;
-    nv.E_angle = getpos1
-    nv.R_angle = getpos0
+    nv.E_angle = getpos1;
+    nv.R_angle = getpos0;
     nv.e_servo_temp = cachedTempE;
     nv.r_servo_temp = cachedTempR;
-    if(is_pid){
-      strcpy(nv.control_mode,"auto")
-    }else{
-      strcpy(nv.control_mode,"manual")
+    if (is_pid) {
+      strcpy(nv.control_mode, "auto");
+    } else {
+      strcpy(nv.control_mode, "manual");
     }
-    
+
     esp_now_send(BROADCAST_MAC, (uint8_t*)&nv, sizeof(nv));
 
     Serial.printf("E:%.1f R:%.1f krs:%d,%d raw:%d,%d getPos:%d,%d pitch:%.1f pid:%.1f\n", degE, degR, krsE, krsR, rawEle, rawRud, getpos0, getpos1, currentPitch, tempDegE);
