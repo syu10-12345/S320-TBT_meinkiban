@@ -99,8 +99,8 @@ float krs2rud(float x) {
 float ElevatorDegMin = -5;
 float ElevatorDegMed = 0;
 float ElevatorDegMax = 5;
-float RudderDegMin = -9.3;//-10.1
-float RudderDegMax = 9.3;
+float RudderDegMin = 9.3;//-10.1
+float RudderDegMax = -9.3;
 
 IcsHardSerialClass krs(&Serial0, EN_PIN, BAUDRATE, TIMEOUT);  //インスタンス＋ENピン(8番ピン)およびUARTの指定
 
@@ -235,8 +235,8 @@ int rawRud = 0;
 int ELE;
 int RUD;
 
-int elergs[4] = { 1120, 1590, 1870, 2460 };  // エレベーター: 前限界, 前戻り, 後戻り, 後限界
-int rudrgs[4] = { 1550, 2120, 2520, 3100 };
+int elergs[4] = { 1120, 1680, 1910, 2580 };  // エレベーター: 前限界, 前戻り, 後戻り, 後限界
+int rudrgs[4] = { 450, 650, 730, 1430 };
 
 int is_center = 0;
 void Potentiometer() {
