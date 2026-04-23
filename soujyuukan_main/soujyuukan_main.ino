@@ -8,9 +8,6 @@
 #include "PidState.h"
 
 
-
-
-
 Preferences preferences;
 TaskHandle_t nvmTaskHandle = NULL;
 bool settingsChanged = false;
@@ -22,7 +19,6 @@ const int r_elevator = 2;  //可変抵抗エレベーター
 const int r_rudder = 3;    //可変抵抗ラダー
 const int trimE = 4;       //エレベータートリムスイッチ
 const int LED = 5;
-const int resetPin = 6;  // NVMリセット用ピンを変更 (GPIO 0番ピンをGNDとショートでリセット)
 const int trimR1 = 9;    //トリムラダー
 const int trimR2 = 10;   //トリムラダー
 
@@ -132,10 +128,7 @@ void pidReset(PidState *state) {
   state->lastTime = millis();
 }
 
-double pidCompute(PidState *state, double error, double gyroRate) {
-  unsigned long now = millis();
-  double dt = (now - state->lastTime) / 1000.0;
-  if (dt <= 0) dt = 0.001;
+double pidCompute(PidState *state, double error, double gyroRate, double dt) {
 
   state->integral += error * dt;
   state->integral = constrain(state->integral, -state->integralMax, state->integralMax);
@@ -211,19 +204,25 @@ int getMedian(int *array, int size) {
   }
   return temp[copySize / 2];  // 中央の値を返す
 }
-int detzoneMapping(int *ary, int x, float *y, float min, float med, float max) {
-  int r = 0;
+struct DeadzoneResult {
+  float mappedValue;  // デッドゾーン処理後の値
+  bool isCenter;      // 現在中央（デッドゾーン内）にいるかどうかの判定
+};
+DeadzoneResult detzoneMapping(int *ary, int x, float min, float med, float max) {
+  DeadzoneResult r;
+  r.isCenter = false;
+
   if (x <= ary[0]) {
-    *y = min;
+    r.mappedValue = min;
   } else if (ary[0] < x && x <= ary[1]) {
-    *y = fmap(x, ary[0], ary[1], min, med);
+    r.mappedValue = fmap(x, ary[0], ary[1], min, med);
   } else if (ary[1] < x && x <= ary[2]) {
-    *y = med;
-    r = 1;
+    r.mappedValue = med;
+    r.isCenter = 1;
   } else if (ary[2] < x && x <= ary[3]) {
-    *y = fmap(x, ary[2], ary[3], med, max);
+    r.mappedValue = fmap(x, ary[2], ary[3], med, max);
   } else {
-    *y = max;
+    r.mappedValue = max;
   }
   return r;
 }
@@ -244,8 +243,11 @@ void Potentiometer() {
   rawEle = analogRead(r_elevator);
   rawRud = analogRead(r_rudder);
 
-  is_center = detzoneMapping(elergs, rawEle, &elevetor, ElevatorDegMax, ElevatorDegMed, ElevatorDegMin);
-  detzoneMapping(rudrgs, rawRud, &rudder, RudderDegMin, (RudderDegMin + RudderDegMax) / 2, RudderDegMax);
+  DeadzoneResult eler = detzoneMapping(elergs, rawEle, ElevatorDegMax, ElevatorDegMed, ElevatorDegMin);
+  elevetor = eler.mappedValue;
+  is_center = eler.isCenter;
+  DeadzoneResult rudr = detzoneMapping(rudrgs, rawRud, RudderDegMin, (RudderDegMin + RudderDegMax) / 2, RudderDegMax);
+  rudder = rudr.mappedValue;
 }
 
 unsigned long lastPushed = millis();  //ボタン4チャタリング防止用
@@ -373,8 +375,11 @@ void mainloop(void *pvParameters) {
     int krsE = ele2krs(degE);
     int krsR = rud2krs(degR);
 
-    float tempDegE = 0.0f;
-    tempDegE = (float)pidCompute(&pidElevator, errorE, currentPitchRate);
+
+    unsigned long now = millis();
+    double dt = (now - pidElevator.lastTime) / 1000.0;
+    if (dt <= 0) dt = 0.001;
+    float tempDegE = pidCompute(&pidElevator, errorE, currentPitchRate,dt);
 
     // 通信断フェイルセーフ: 300ms pitch を受信していなければ PID を使わない
     bool pitchLinkOk = (millis() - g_lastPitchRecvMs < PITCH_LINK_TIMEOUT_MS);
@@ -450,7 +455,6 @@ void setup() {
   pinMode(LED, OUTPUT);
   pinMode(trimR1, INPUT);
   pinMode(trimR2, INPUT);
-  pinMode(resetPin, INPUT);
 
   pidInit(&pidElevator, -1.0, -0.1, -0.05, 30.0);  // Kd=-0.05 : ジャイロD項有効化, integralMax [°]
   pidInit(&pidRudder, 1.0, 0.1, 0.05, 30.0);
