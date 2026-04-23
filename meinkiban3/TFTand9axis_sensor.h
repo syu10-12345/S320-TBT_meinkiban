@@ -692,8 +692,7 @@ public:
         if (rr)
         {
             xyzFloat gyrVal;
-            myIMU.getGyrValues(&gyrVal);
-            *rr = gyrVal.z; // ロール軸の角速度 [°/s]
+            *rr = gyrVal.x; // ロール軸の角速度 [°/s]
         }
     }
 

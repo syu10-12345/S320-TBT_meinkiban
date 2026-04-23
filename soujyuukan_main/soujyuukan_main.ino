@@ -22,9 +22,9 @@ const int r_elevator = 2;  //可変抵抗エレベーター
 const int r_rudder = 3;    //可変抵抗ラダー
 const int trimE = 4;       //エレベータートリムスイッチ
 const int LED = 5;
-const int resetPin = 6;        // NVMリセット用ピンを変更 (GPIO 0番ピンをGNDとショートでリセット)
-const int trimR1 = 9;          //トリムラダー
-const int trimR2 = 10;         //トリムラダー
+const int resetPin = 6;  // NVMリセット用ピンを変更 (GPIO 0番ピンをGNDとショートでリセット)
+const int trimR1 = 9;    //トリムラダー
+const int trimR2 = 10;   //トリムラダー
 
 
 
@@ -53,7 +53,7 @@ struct NavigationData {
 };
 #pragma pack(pop)
 static const uint8_t WIFI_CHANNEL = 1;
-static uint8_t BROADCAST_MAC[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+static uint8_t BROADCAST_MAC[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 #define MAGIC 0x53333230u
 #define ROLE_MEINKIBAN3 1
 #define ROLE_SOUJYUUKAN 2
@@ -78,20 +78,20 @@ void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
 
 // 実舵角 x[°]（分度器）→ KRS（多項式本体・逆映射用はクランプなし）
 static float ele2krs(float x) {
-  return 0.012577102329*pow(x, 5) + 0.0194099102747*pow(x, 4) - 0.634353764183*pow(x, 3) - 0.815828278465*pow(x, 2) + 185.794437174*pow(x, 1) + 5701.22753031;
+  return 0.012577102329 * pow(x, 5) + 0.0194099102747 * pow(x, 4) - 0.634353764183 * pow(x, 3) - 0.815828278465 * pow(x, 2) + 185.794437174 * pow(x, 1) + 5701.22753031;
 }
 
 static float rud2krs(float x) {
-  return -0.0105114837351*pow(x, 5) - 0.0659075647903*pow(x, 4) + 0.241297817826*pow(x, 3) + 2.97624922026*pow(x, 2) - 179.910899851*pow(x, 1) + 6563.03984539;
+  return -0.0105114837351 * pow(x, 5) - 0.0659075647903 * pow(x, 4) + 0.241297817826 * pow(x, 3) + 2.97624922026 * pow(x, 2) - 179.910899851 * pow(x, 1) + 6563.03984539;
 }
 
 //KRS→ 舵角に変換する関数
 float krs2ele(float x) {
-  x = 2.9862304768e-18*pow(x, 5) - 7.42363558025e-14*pow(x, 4) + 3.95030812038e-10*pow(x, 3) + 2.10479251629e-06*pow(x, 2) - 0.0174092175976*pow(x, 1) + 18.1307278407;
+  x = 2.9862304768e-18 * pow(x, 5) - 7.42363558025e-14 * pow(x, 4) + 3.95030812038e-10 * pow(x, 3) + 2.10479251629e-06 * pow(x, 2) - 0.0174092175976 * pow(x, 1) + 18.1307278407;
   return constrain(x, -5, 5);
 }
 float krs2rud(float x) {
-  x = -1.35085986658e-17*pow(x, 5) + 4.38562944215e-13*pow(x, 4) - 5.31829061512e-09*pow(x, 3) + 2.9458795701e-05*pow(x, 2) - 0.0758402111862*pow(x, 1) + 83.232581592;
+  x = -1.35085986658e-17 * pow(x, 5) + 4.38562944215e-13 * pow(x, 4) - 5.31829061512e-09 * pow(x, 3) + 2.9458795701e-05 * pow(x, 2) - 0.0758402111862 * pow(x, 1) + 83.232581592;
   return constrain(x, -10, 10);
 }
 
@@ -99,7 +99,7 @@ float krs2rud(float x) {
 float ElevatorDegMin = -5;
 float ElevatorDegMed = 0;
 float ElevatorDegMax = 5;
-float RudderDegMin = 9.3;//-10.1
+float RudderDegMin = 9.3;  //-10.1
 float RudderDegMax = -9.3;
 
 IcsHardSerialClass krs(&Serial0, EN_PIN, BAUDRATE, TIMEOUT);  //インスタンス＋ENピン(8番ピン)およびUARTの指定
@@ -114,7 +114,7 @@ int is_pid = 0;  //今PID制御をONにするかどうか(0か1)
 
 // PidState は PidState.h で定義
 PidState pidElevator;
-PidState pidRudder;         //一応ラダーも用意しているが、今回はラダーに関するオートパイロットは行わない
+PidState pidRudder;  //一応ラダーも用意しているが、今回はラダーに関するオートパイロットは行わない
 
 void pidInit(PidState *state, float kp, float ki, float kd, float integralMax) {
   state->kp = kp;
@@ -193,7 +193,7 @@ float fmap(float x, float in_min, float in_max, float out_min, float out_max) {
 }
 
 //中央値フィルタ
-int getMedian(int* array, int size) {
+int getMedian(int *array, int size) {
   int temp[5];
   // tempのサイズ(5)を超える場合は安全のため5に制限する
   int copySize = size > 5 ? 5 : size;
@@ -209,20 +209,20 @@ int getMedian(int* array, int size) {
       }
     }
   }
-  return temp[copySize / 2]; // 中央の値を返す
+  return temp[copySize / 2];  // 中央の値を返す
 }
-int detzoneMapping(int *ary,int x,float *y,float min,float med,float max){
+int detzoneMapping(int *ary, int x, float *y, float min, float med, float max) {
   int r = 0;
-  if(x <= ary[0]){
+  if (x <= ary[0]) {
     *y = min;
-  }else if(ary[0] < x && x <= ary[1]){
-    *y = fmap(x,ary[0],ary[1],min,med);
-  }else if(ary[1] < x && x <= ary[2]){
+  } else if (ary[0] < x && x <= ary[1]) {
+    *y = fmap(x, ary[0], ary[1], min, med);
+  } else if (ary[1] < x && x <= ary[2]) {
     *y = med;
     r = 1;
-  }else if(ary[2] < x && x <= ary[3]){
-    *y = fmap(x,ary[2],ary[3],med,max);
-  }else{
+  } else if (ary[2] < x && x <= ary[3]) {
+    *y = fmap(x, ary[2], ary[3], med, max);
+  } else {
     *y = max;
   }
   return r;
@@ -245,14 +245,14 @@ void Potentiometer() {
   rawRud = analogRead(r_rudder);
 
   is_center = detzoneMapping(elergs, rawEle, &elevetor, ElevatorDegMax, ElevatorDegMed, ElevatorDegMin);
-  detzoneMapping(rudrgs, rawRud, &rudder, RudderDegMin, (RudderDegMin+RudderDegMax)/2, RudderDegMax);
+  detzoneMapping(rudrgs, rawRud, &rudder, RudderDegMin, (RudderDegMin + RudderDegMax) / 2, RudderDegMax);
 }
 
 unsigned long lastPushed = millis();  //ボタン4チャタリング防止用
 
 // ニュートラル帯(2000..2300): 長押しはイン帯フレーム数、単押しは帯外が安定してから確定(@30Hz想定)
-static const int NEUTRAL_LONG_PRESS_FRAMES = 20;       // >20 で発火（21 フレーム ≒ 0.7s）
-static const int NEUTRAL_RELEASE_STABLE_FRAMES = 8;    // 帯外がこれ以上続けば離し確定（≒ 0.27s）
+static const int NEUTRAL_LONG_PRESS_FRAMES = 20;     // >20 で発火（21 フレーム ≒ 0.7s）
+static const int NEUTRAL_RELEASE_STABLE_FRAMES = 8;  // 帯外がこれ以上続けば離し確定（≒ 0.27s）
 static bool neutralStrokeActive = false;
 static bool neutralLongPressDone = false;
 static int neutralBandHoldFrames = 0;
@@ -369,7 +369,7 @@ void mainloop(void *pvParameters) {
     LED は PID モード ON の合図。中立外で is_pid を落とすとボタン押下と無関係に消灯するため、
     中立外は手動舵角のままモードだけ維持し、積分はリセットしてウィンドアップを防ぐ。
     */
-    
+
     int krsE = ele2krs(degE);
     int krsR = rud2krs(degR);
 
@@ -426,7 +426,7 @@ void mainloop(void *pvParameters) {
     memset(nv.control_mode, 0, sizeof(nv.control_mode));
     strncpy(nv.control_mode, is_pid ? "assisted" : "manual", sizeof(nv.control_mode) - 1);
 
-    esp_now_send(BROADCAST_MAC, (uint8_t*)&nv, sizeof(nv));
+    esp_now_send(BROADCAST_MAC, (uint8_t *)&nv, sizeof(nv));
 
     Serial.printf("E:%.1f R:%.1f krs:%d,%d raw:%d,%d getPos:%d,%d pitch:%.1f pid:%.1f\n", degE, degR, krsE, krsR, rawEle, rawRud, getpos0, getpos1, currentPitch, tempDegE);
 
