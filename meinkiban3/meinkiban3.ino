@@ -45,21 +45,20 @@ volatile double E_angle = 0;
 volatile double R_angle = 0;
 volatile double e_servo_temp = 0.0;
 volatile double r_servo_temp = 0.0;
-volatile String control_mode = "manual";  // "manual" or "assisted"
+volatile String control_mode = "manual"; // "manual" or "assisted"
 volatile String electrical_errors = "[]";
 
-
 static const uint8_t WIFI_CHANNEL = 1;
-static uint8_t BROADCAST_MAC[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+static uint8_t BROADCAST_MAC[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 // ESP-NOW はコネクションレスなので、最終受信時刻で疎通を判定する
 static volatile uint32_t g_lastRecvFromSoujyuukanMs = 0;
 static const uint32_t LINK_TIMEOUT_MS = 500;
 
-
 // ==========================================
 #pragma pack(push, 1)
-struct ControlData {
+struct ControlData
+{
   uint32_t magic;
   uint8_t role;
   float E_steer, R_steer;
@@ -67,19 +66,27 @@ struct ControlData {
   float e_servo_temp, r_servo_temp;
   char control_mode[12];
 };
-struct NavigationData {
+struct NavigationData
+{
   uint32_t magic;
   uint8_t role;
   float pitch;
-  float pitch_rate;  // ジャイロ Y軸 [°/s] — PID の D項に使用
+  float pitch_rate; // ジャイロ Y軸 [°/s] — PID の D項に使用
 };
-struct FullTelemetryPacket {
-  ControlData ctrl;
-  NavigationData nav;
+struct FullTelemetryPacket
+{
+  uint32_t magic;
+  uint8_t role;
+  float E_steer, R_steer;
+  float E_trim, E_angle, R_angle;
+  float e_servo_temp, r_servo_temp;
+  float pitch;
+  float roll;
+  float pitch_rate;
+  float roll_rate;
   float front_rpm, rear_rpm;
   float air_speed, gnd_speed, Altitude, heading;
   double lat, lon;
-  float roll;
   uint32_t epoch_time;
   bool electrical_errors[12];
 };
@@ -90,14 +97,18 @@ struct FullTelemetryPacket {
 #define ROLE_LOGGER 3
 
 // --- 受信コールバック（操縦用C3からデータが届いた時） ---
-void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
-  if (len != sizeof(ControlData)) return;
+void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len)
+{
+  if (len != sizeof(ControlData))
+    return;
   ControlData pkt;
   memcpy(&pkt, data, sizeof(pkt));
 
-  if (pkt.magic != MAGIC) return;
+  if (pkt.magic != MAGIC)
+    return;
 
-  if (pkt.role != ROLE_SOUJYUUKAN) return;
+  if (pkt.role != ROLE_SOUJYUUKAN)
+    return;
 
   E_steer = pkt.E_steer;
   R_steer = pkt.R_steer;
@@ -110,18 +121,21 @@ void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
   g_lastRecvFromSoujyuukanMs = millis();
 }
 
-void onSent(const wifi_tx_info_t *tx_info, esp_now_send_status_t status) {
-  if (status != ESP_NOW_SEND_SUCCESS) {
+void onSent(const wifi_tx_info_t *tx_info, esp_now_send_status_t status)
+{
+  if (status != ESP_NOW_SEND_SUCCESS)
+  {
     Serial.println("[send] 送信失敗");
   }
   // 成功時は静かにする (毎回ログると邪魔)
 }
 
 /* ===== グローバル変数 ===== */
-unsigned long previousMillis = 0;  // 前回の更新時間を保存
-const long interval = 120;         // 更新間隔（ミリ秒）
+unsigned long previousMillis = 0; // 前回の更新時間を保存
+const long interval = 120;        // 更新間隔（ミリ秒）
 double pitch = 0.0;
-double pitch_rate = 0.0;  // ジャイロ ピッチレート [°/s]
+double pitch_rate = 0.0; // ジャイロ ピッチレート [°/s]
+double roll_rate = 0.0;  // ジャイロ ロールレート [°/s]
 double roll = 0.0;
 double heading = 0.0;
 double Altitude = 0.0;
@@ -138,13 +152,13 @@ double roll_rad;
 double lat;
 double lon;
 double alt;
-float ref_alt;  // 基準となる高度
+float ref_alt; // 基準となる高度
 double GNSS_heading;
 int fixType;
 int16_t rawPressure;
 double AIR_DENSITY;
-unsigned long lastUltraTime = 0;  // 最後に計測した時間を記録する変数
-TaskHandle_t displayTaskHandle;   // タスクを管理するためのハンドル
+unsigned long lastUltraTime = 0; // 最後に計測した時間を記録する変数
+TaskHandle_t displayTaskHandle;  // タスクを管理するためのハンドル
 uint32_t epoch_time;
 int year;
 int month;
@@ -170,7 +184,6 @@ double avg_rpm;
 TBT_GNSS mygnss;
 TBT_AndroidSerial myAndroid;
 
-
 /* ===== 関数プロトタイプ ===== */
 void clearI2CBus(int sdaPin, int sclPin);
 void readSiseikaku();
@@ -187,13 +200,14 @@ void IRAM_ATTR isrPhoto1();
 void IRAM_ATTR isrPhoto2();
 void calcRPM();
 void sendCtrlStick();
-bool mcp_active = false;  // MCPが正しく認識されたか管理するフラグ
+bool mcp_active = false; // MCPが正しく認識されたか管理するフラグ
 bool ultra_active = false;
 bool gps_active = false;
 bool sdp_active = false;
 bool imu_active = false;
 
-void setup() {
+void setup()
+{
   delay(500);
 
   clearI2CBus(I2C0_SDA, I2C0_SCL);
@@ -229,14 +243,17 @@ void setup() {
 
   instrumentPanel.begin();
 
-  if (mcp.begin_I2C(0x20, &Wire1)) {
-    //Serial.println("MCP23017 Init OK");
+  if (mcp.begin_I2C(0x20, &Wire1))
+  {
+    // Serial.println("MCP23017 Init OK");
     mcp.pinMode(LED1, OUTPUT);
     mcp.pinMode(LED2, OUTPUT);
     mcp.pinMode(LED3, OUTPUT);
     mcp_active = true;
-  } else {
-    //Serial.println("MCP23017 Init Failed");
+  }
+  else
+  {
+    // Serial.println("MCP23017 Init Failed");
     mcp_active = false;
   }
 
@@ -245,30 +262,35 @@ void setup() {
   startMeasurement();
   delay(20);
 
-  //ESP-NOWの初期設定
+  // ESP-NOWの初期設定
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
   esp_wifi_set_channel(WIFI_CHANNEL, WIFI_SECOND_CHAN_NONE);
 
-  if (esp_now_init() != ESP_OK) {
+  if (esp_now_init() != ESP_OK)
+  {
     Serial.println("[error] esp_now_init 失敗");
-    while (1) delay(500);
+    while (1)
+      delay(500);
   }
 
-  esp_now_peer_info_t peer = {};             // 構造体を全部ゼロで初期化
-  memcpy(peer.peer_addr, BROADCAST_MAC, 6);  // 宛先 MAC をコピー
-  peer.channel = WIFI_CHANNEL;               // 同じチャンネルを指定
-  peer.encrypt = false;                      // ブロードキャストは暗号化不可
-  if (esp_now_add_peer(&peer) != ESP_OK) {
+  esp_now_peer_info_t peer = {};            // 構造体を全部ゼロで初期化
+  memcpy(peer.peer_addr, BROADCAST_MAC, 6); // 宛先 MAC をコピー
+  peer.channel = WIFI_CHANNEL;              // 同じチャンネルを指定
+  peer.encrypt = false;                     // ブロードキャストは暗号化不可
+  if (esp_now_add_peer(&peer) != ESP_OK)
+  {
     Serial.println("[error] add_peer 失敗");
-    while (1) delay(1000);
+    while (1)
+      delay(1000);
   }
 
   esp_now_register_send_cb(onSent);
   esp_now_register_recv_cb(onRecv);
 }
 
-void loop() {
+void loop()
+{
   photo1 = digitalRead(PHOTO1_PIN);
   photo2 = digitalRead(PHOTO2_PIN);
   tktsw = digitalRead(tktsw_PIN);
@@ -277,58 +299,70 @@ void loop() {
   {
     static unsigned long highStartTime = 0;
     static bool wasTriggered = false;
-    if (tktsw == HIGH) {
+    if (tktsw == HIGH)
+    {
       ref_alt = alt;
       instrumentPanel.getRef_alt(ref_alt);
       if (highStartTime == 0)
         highStartTime = millis();
-      if (!wasTriggered && millis() - highStartTime > 500) {
+      if (!wasTriggered && millis() - highStartTime > 500)
+      {
         wasTriggered = true;
         instrumentPanel.calibrate();
       }
-    } else {
+    }
+    else
+    {
       highStartTime = 0;
       wasTriggered = false;
     }
   }
 
-  if (millis() - lastUltraTime >= interval) {
-    if (ultra_active) {
-      readAltimeter();  // 前回スタートに成功していれば、値を読み取る
-      if (Altitude < 0) {
+  if (millis() - lastUltraTime >= interval)
+  {
+    if (ultra_active)
+    {
+      readAltimeter(); // 前回スタートに成功していれば、値を読み取る
+      if (Altitude < 0)
+      {
         Altitude = 0;
       }
-    } else {
+    }
+    else
+    {
       Altitude = alt;
     }
 
-    startAltimeter();          // 失敗していても、必ず次の測定開始合図を送って再挑戦する
-    lastUltraTime = millis();  // タイマーをリセット
+    startAltimeter();         // 失敗していても、必ず次の測定開始合図を送って再挑戦する
+    lastUltraTime = millis(); // タイマーをリセット
   }
 
   static unsigned long lastPrint1 = 0;
   static unsigned long lastPrint2 = 50;
   static unsigned long lastCtrlSend = 0;
-  instrumentPanel.getPitchAndRoll(&pitch_rad, &roll_rad, &pitch_rate);
+  instrumentPanel.getPitchAndRoll(&pitch_rad, &roll_rad, &pitch_rate, &roll_rate);
   // heading = instrumentPanel.getHeading(pitch_rad, roll_rad);
   instrumentPanel.updata(E_trim, air_speed, front_rpm, Altitude);
   pitch = pitch_rad * (180.0 / PI);
   roll = roll_rad * (180.0 / PI);
 
   // 操縦桿基板へ pitch/pitch_rate を定期送信 (50Hz 相当)
-  if (millis() - lastCtrlSend >= 20) {
+  if (millis() - lastCtrlSend >= 20)
+  {
     sendCtrlStick();
     lastCtrlSend = millis();
   }
 
   // トリガスイッチ ON のときだけロガーへフルテレメトリを送信 (50Hz 相当)
   static unsigned long lastLoggerSend = 0;
-  if (tgrsw == HIGH && millis() - lastLoggerSend >= 20) {
+  if (tgrsw == HIGH && millis() - lastLoggerSend >= 20)
+  {
     sendLogger();
     lastLoggerSend = millis();
   }
 
-  if (millis() - lastPrint1 >= interval) {
+  if (millis() - lastPrint1 >= interval)
+  {
     tgrsw = digitalRead(tgrsw_PIN);
     readkisoku();
     confirmICM();
@@ -338,7 +372,8 @@ void loop() {
     lastPrint1 = millis();
   }
 
-  if (millis() - lastPrint2 >= interval) {
+  if (millis() - lastPrint2 >= interval)
+  {
     loopGPS();
     sendAndoroid();
     lastPrint2 = millis();
@@ -346,25 +381,28 @@ void loop() {
 }
 
 /* ===== 関数定義 ===== */
-void sendCtrlStick() {
+void sendCtrlStick()
+{
   NavigationData navData;
   navData.magic = MAGIC;
   navData.role = ROLE_MEINKIBAN3;
   navData.pitch = (float)pitch;
   navData.pitch_rate = (float)pitch_rate;
   esp_err_t r = esp_now_send(BROADCAST_MAC, (uint8_t *)&navData, sizeof(navData));
-  if (r != ESP_OK) {
+  if (r != ESP_OK)
+  {
     Serial.printf("[send] error code=%d\n", r);
   }
 }
 
-void sendLogger() {
+void sendLogger()
+{
   FullTelemetryPacket packet;
-  memset(&packet, 0, sizeof(packet));  // 未代入フィールドのゴミ値を防ぐ
+  memset(&packet, 0, sizeof(packet)); // 未代入フィールドのゴミ値を防ぐ
 
-  packet.nav.pitch = (float)pitch;
-
+  packet.pitch = (float)pitch;
   packet.roll = (float)roll;
+
   packet.lat = lat;
   packet.lon = lon;
   packet.Altitude = (float)Altitude;
@@ -375,13 +413,13 @@ void sendLogger() {
   packet.rear_rpm = (float)rear_rpm;
   packet.epoch_time = epoch_time;
 
-  packet.ctrl.E_steer = (float)E_steer;
-  packet.ctrl.R_steer = (float)R_steer;
-  packet.ctrl.E_trim = (float)E_trim;
-  packet.ctrl.E_angle = (float)E_angle;
-  packet.ctrl.R_angle = (float)R_angle;
-  packet.ctrl.e_servo_temp = (float)e_servo_temp;
-  packet.ctrl.r_servo_temp = (float)r_servo_temp;
+  packet.E_steer = (float)E_steer;
+  packet.R_steer = (float)R_steer;
+  packet.E_trim = (float)E_trim;
+  packet.E_angle = (float)E_angle;
+  packet.R_angle = (float)R_angle;
+  packet.e_servo_temp = (float)e_servo_temp;
+  packet.r_servo_temp = (float)r_servo_temp;
 
   packet.electrical_errors[0] = gps_active;
   packet.electrical_errors[1] = mcp_active;
@@ -391,19 +429,23 @@ void sendLogger() {
 
   strncpy(packet.ctrl.control_mode, control_mode.c_str(), sizeof(packet.ctrl.control_mode) - 1);
 
-  esp_err_t r = esp_now_send(BROADCAST_MAC, (uint8_t*)&packet, sizeof(packet));
-  if (r != ESP_OK) {
-    //Serial.printf("[send] error code=%d\n", r);
+  esp_err_t r = esp_now_send(BROADCAST_MAC, (uint8_t *)&packet, sizeof(packet));
+  if (r != ESP_OK)
+  {
+    // Serial.printf("[send] error code=%d\n", r);
   }
 }
 
-void MCP23017_LED() {
+void MCP23017_LED()
+{
   Wire1.beginTransmission(0x20);
-  if (Wire1.endTransmission() == 0) {
+  if (Wire1.endTransmission() == 0)
+  {
     // 応答あり
-    if (!mcp_active) {
-      //Serial.println("MCP23017 Recovered! Re-initializing pins...");
-      // begin_I2Cを呼ばずに、直接ピン設定だけをやり直す
+    if (!mcp_active)
+    {
+      // Serial.println("MCP23017 Recovered! Re-initializing pins...");
+      //  begin_I2Cを呼ばずに、直接ピン設定だけをやり直す
       mcp.pinMode(LED1, OUTPUT);
       mcp.pinMode(LED2, OUTPUT);
       mcp.pinMode(LED3, OUTPUT);
@@ -413,45 +455,64 @@ void MCP23017_LED() {
       mcp.digitalWrite(LED3, LOW);
     }
     mcp_active = true;
-  } else {
+  }
+  else
+  {
     // 応答なし（エラー状態）
-    if (mcp_active) {
-      //Serial.println("MCP23017 Connection Lost!");
+    if (mcp_active)
+    {
+      // Serial.println("MCP23017 Connection Lost!");
     }
     mcp_active = false;
   }
 
-  if (mcp_active) {
+  if (mcp_active)
+  {
     // 正常に生きている時だけLEDを操作
-    if (p_rpm <= 5) {
+    if (p_rpm <= 5)
+    {
       mcp.digitalWrite(LED1, LOW);
       mcp.digitalWrite(LED2, LOW);
       mcp.digitalWrite(LED3, LOW);
-    } else if (5 < p_rpm && p_rpm <= 20) {
+    }
+    else if (5 < p_rpm && p_rpm <= 20)
+    {
       mcp.digitalWrite(LED1, HIGH);
       mcp.digitalWrite(LED2, LOW);
       mcp.digitalWrite(LED3, LOW);
-    } else if (20 < p_rpm && p_rpm <= 60) {
+    }
+    else if (20 < p_rpm && p_rpm <= 60)
+    {
       mcp.digitalWrite(LED1, HIGH);
       mcp.digitalWrite(LED2, HIGH);
       mcp.digitalWrite(LED3, LOW);
-    } else if (60 < p_rpm && p_rpm <= 80) {
+    }
+    else if (60 < p_rpm && p_rpm <= 80)
+    {
       mcp.digitalWrite(LED1, LOW);
       mcp.digitalWrite(LED2, HIGH);
       mcp.digitalWrite(LED3, LOW);
-    } else if (80 < p_rpm && p_rpm <= 100) {
+    }
+    else if (80 < p_rpm && p_rpm <= 100)
+    {
       mcp.digitalWrite(LED1, LOW);
       mcp.digitalWrite(LED2, HIGH);
       mcp.digitalWrite(LED3, HIGH);
-    } else if (100 < p_rpm && p_rpm <= 120) {
+    }
+    else if (100 < p_rpm && p_rpm <= 120)
+    {
       mcp.digitalWrite(LED1, LOW);
       mcp.digitalWrite(LED2, LOW);
       mcp.digitalWrite(LED3, HIGH);
-    } else if (120 < p_rpm && p_rpm <= 140) {
+    }
+    else if (120 < p_rpm && p_rpm <= 140)
+    {
       mcp.digitalWrite(LED1, HIGH);
       mcp.digitalWrite(LED2, LOW);
       mcp.digitalWrite(LED3, HIGH);
-    } else {
+    }
+    else
+    {
       mcp.digitalWrite(LED1, HIGH);
       mcp.digitalWrite(LED2, HIGH);
       mcp.digitalWrite(LED3, HIGH);
@@ -459,35 +520,44 @@ void MCP23017_LED() {
   }
 }
 
-void startAltimeter() {
+void startAltimeter()
+{
   Wire.beginTransmission(ADDR_MB1242);
-  Wire.write(0x51);  // 測定開始コマンド
+  Wire.write(0x51); // 測定開始コマンド
 
-  if (Wire.endTransmission() == 0) {
+  if (Wire.endTransmission() == 0)
+  {
     lastUltraTime = millis();
     ultra_active = true;
-  } else {
+  }
+  else
+  {
     ultra_active = false;
   }
 }
 
-void readAltimeter() {
+void readAltimeter()
+{
   Wire.requestFrom(ADDR_MB1242, 2);
 
-  if (Wire.available() >= 2) {
+  if (Wire.available() >= 2)
+  {
     // 読み取り成功
     byte high = Wire.read();
     byte low = Wire.read();
     Altitude = ((double)((high << 8) | low) / 100) - 0.3;
     ultra_active = true;
-    if (Altitude > 7.30) {
+    if (Altitude > 7.30)
+    {
       Altitude = alt;
     }
-  } else {
+  }
+  else
+  {
     // 読み取り失敗！ -> 即座にバスクリアと再初期化を行う
-    //Serial.println("I2C0 Error: Resetting Bus...");
+    // Serial.println("I2C0 Error: Resetting Bus...");
     ultra_active = false;
-    Wire.end();  // ペリフェラルを一旦停止
+    Wire.end(); // ペリフェラルを一旦停止
 
     // SCLピンを直接操作してバスのロックを解除
     clearI2CBus(I2C0_SDA, I2C0_SCL);
@@ -503,21 +573,26 @@ void readAltimeter() {
   }
 }
 
-bool startMeasurement() {
+bool startMeasurement()
+{
   Wire1.beginTransmission(SDP810_ADDR);
   Wire1.write(0x36);
-  Wire1.write(0x15);  // 平均化ありの連続測定
+  Wire1.write(0x15); // 平均化ありの連続測定
   byte error = Wire1.endTransmission();
-  if (error == 0) {
+  if (error == 0)
+  {
     return true;
-  } else {
-    //Serial.print("SDP810 Start Fail! Error: ");
-    //Serial.println(error);
+  }
+  else
+  {
+    // Serial.print("SDP810 Start Fail! Error: ");
+    // Serial.println(error);
     return false;
   }
 }
 
-void readkisoku() {
+void readkisoku()
+{
   int16_t dp_raw;
   int16_t temp_raw;
   float tempreature;
@@ -525,7 +600,8 @@ void readkisoku() {
 
   byte count = Wire1.requestFrom(SDP810_ADDR, 6);
 
-  if (count == 6) {
+  if (count == 6)
+  {
     sdp_active = true;
     // 差圧
     dp_raw = (Wire1.read() << 8) | Wire1.read();
@@ -540,37 +616,45 @@ void readkisoku() {
       pressurePa = 0;
     // 風速計算
     air_speed = 1.23 * sqrt(2 * pressurePa / AIR_DENSITY);
-  } else {
+  }
+  else
+  {
     sdp_active = false;
     air_speed = 0.0;
 
     // ==========================================
     // ★賢いエラー判定（巻き添えリセット防止システム）
     // ==========================================
-    if (mcp_active == true) {
+    if (mcp_active == true)
+    {
       // パターンA: MCPが生きているなら、I2Cバス全体は正常！
       // 単にSDP810が接触不良なので、バスは破壊せずに「測定開始」だけもう一度試す
       startMeasurement();
-    } else {
+    }
+    else
+    {
       // パターンB: MCPも死んでいるなら、I2Cバスが完全にフリーズしている！
       // ここで初めて、バスの強制リセットと全員の再起動を行う
-      //Serial.println("I2C1 Error: Resetting Bus...");
+      // Serial.println("I2C1 Error: Resetting Bus...");
       Wire1.end();
       clearI2CBus(I2C1_SDA, I2C1_SCL);
       Wire1.begin(I2C1_SDA, I2C1_SCL);
       Wire1.setTimeOut(50);
       Wire1.setClock(100000);
 
-      if (mcp.begin_I2C(0x20, &Wire1)) {
+      if (mcp.begin_I2C(0x20, &Wire1))
+      {
         // I2C通信が再開できたら、ピンの出力設定もやり直す
         mcp.pinMode(LED1, OUTPUT);
         mcp.pinMode(LED2, OUTPUT);
         mcp.pinMode(LED3, OUTPUT);
         mcp_active = true;
-        //Serial.println("MCP23017 Recovered!");
-      } else {
+        // Serial.println("MCP23017 Recovered!");
+      }
+      else
+      {
         mcp_active = false;
-        //Serial.println("MCP23017 Recovery Failed.");
+        // Serial.println("MCP23017 Recovery Failed.");
       }
       startMeasurement();
     }
@@ -578,23 +662,27 @@ void readkisoku() {
 }
 
 // I2Cバスのフリーズを強制解除する関数
-void clearI2CBus(int sdaPin, int sclPin) {
+void clearI2CBus(int sdaPin, int sclPin)
+{
   pinMode(sdaPin, INPUT);
   pinMode(sclPin, INPUT);
   gpio_pullup_dis((gpio_num_t)sdaPin);
   gpio_pullup_dis((gpio_num_t)sclPin);
 
   // もしSDAがLOWに張り付いていたら、スレーブがハングしている
-  if (digitalRead(sdaPin) == LOW) {
+  if (digitalRead(sdaPin) == LOW)
+  {
     pinMode(sclPin, OUTPUT);
     // スレーブがSDAを離すまで、ダミークロックを最大9回送る
-    for (int i = 0; i < 9; i++) {
+    for (int i = 0; i < 9; i++)
+    {
       digitalWrite(sclPin, LOW);
       delayMicroseconds(5);
       digitalWrite(sclPin, HIGH);
       delayMicroseconds(5);
       // SDAがHIGH（解放）に戻ったらループを抜ける
-      if (digitalRead(sdaPin) == HIGH) {
+      if (digitalRead(sdaPin) == HIGH)
+      {
         break;
       }
     }
@@ -604,21 +692,23 @@ void clearI2CBus(int sdaPin, int sclPin) {
   pinMode(sdaPin, OUTPUT);
   digitalWrite(sdaPin, LOW);
   delayMicroseconds(5);
-  pinMode(sclPin, INPUT);  // SCLを先にHIGHへ
+  pinMode(sclPin, INPUT); // SCLを先にHIGHへ
   delayMicroseconds(5);
-  pinMode(sdaPin, INPUT);  // その後SDAをHIGHへ
+  pinMode(sdaPin, INPUT); // その後SDAをHIGHへ
   gpio_pullup_dis((gpio_num_t)sdaPin);
   gpio_pullup_dis((gpio_num_t)sclPin);
 }
 
-void setGPS() {
+void setGPS()
+{
   // Attach AndroidSerial to main Serial (USB)
   myAndroid.attach(115200);
   // Attach GNSS (Baud, RX, TX, UART#)
   mygnss.attach(921600, 16, 17, 1);
 }
 
-void loopGPS() {
+void loopGPS()
+{
   lat = mygnss.get(GNSS_LATITUDE);
   lon = mygnss.get(GNSS_LONGITUDE);
   alt = mygnss.get(GNSS_ALTITUDE) - ref_alt;
@@ -631,14 +721,17 @@ void loopGPS() {
   minute = mygnss.get(GNSS_MINUTE);
   second = mygnss.get(GNSS_SECOND);
   struct tm timeinfo;
-  if (0 < alt && alt < 7.30) {
+  if (0 < alt && alt < 7.30)
+  {
     alt = 7.3;
-  } else if (alt <= 0) {
+  }
+  else if (alt <= 0)
+  {
     alt = 0;
   }
   // ③ 箱に数字を流し込む（※年と月に「C言語特有の罠」があるので注意！）
-  timeinfo.tm_year = year - 1900;  // 年は「1900」を引くルール
-  timeinfo.tm_mon = month - 1;     // 月は「1」を引くルール（1月=0、12月=11）
+  timeinfo.tm_year = year - 1900; // 年は「1900」を引くルール
+  timeinfo.tm_mon = month - 1;    // 月は「1」を引くルール（1月=0、12月=11）
   timeinfo.tm_mday = day;
   timeinfo.tm_hour = hour + 9;
   timeinfo.tm_min = minute;
@@ -649,7 +742,8 @@ void loopGPS() {
   fixType = 3;
 }
 
-void sendAndoroid() {
+void sendAndoroid()
+{
   myAndroid.resetData();
 
   // Web Data - Steering and Control
@@ -678,11 +772,16 @@ void sendAndoroid() {
   myAndroid.add("GNSS_heading", (int)GNSS_heading);
 
   // Accuracy logic
-  if (fixType >= 3) {  // 3D or better
+  if (fixType >= 3)
+  { // 3D or better
     myAndroid.add("gps_accuracy", 0.5);
-  } else if (fixType == 2) {  // 2D
+  }
+  else if (fixType == 2)
+  { // 2D
     myAndroid.add("gps_accuracy", 5.0);
-  } else {
+  }
+  else
+  {
     myAndroid.add("gps_accuracy", 99.9);
   }
 
@@ -692,25 +791,27 @@ void sendAndoroid() {
 
   // エラーがあれば番号を追加！
   if (fixType < 3)
-    errors.add(200);  // GPSエラー
+    errors.add(200); // GPSエラー
   if (!mcp_active)
-    errors.add(400);  // MCP23017エラー
+    errors.add(400); // MCP23017エラー
   if (!ultra_active)
-    errors.add(401);  // 高度計エラー
+    errors.add(401); // 高度計エラー
   if (!sdp_active)
-    errors.add(402);  // ピトー管エラー
-  if (!imu_active) {
-    errors.add(201);  // 9軸センサーエラー
+    errors.add(402); // ピトー管エラー
+  if (!imu_active)
+  {
+    errors.add(201); // 9軸センサーエラー
     errors.add(403);
   }
   if (millis() - g_lastRecvFromSoujyuukanMs > LINK_TIMEOUT_MS)
-    errors.add(500);  // 操縦桿との通信エラー (ESP-NOW: 500ms 無音で判定)
+    errors.add(500); // 操縦桿との通信エラー (ESP-NOW: 500ms 無音で判定)
   if (e_servo_temp < 5)
-    errors.add(501);  // エレベーターサーボ温度異常
+    errors.add(501); // エレベーターサーボ温度異常
   if (r_servo_temp < 5)
-    errors.add(502);  // ラダーサーボ温度異常
+    errors.add(502); // ラダーサーボ温度異常
   // 600 (ロガー通信エラー) はロガーからのハートビート実装後に復活予定
-  for (JsonVariant e : errors) {
+  for (JsonVariant e : errors)
+  {
     myAndroid.addError(e.as<int>());
   }
 
@@ -719,63 +820,80 @@ void sendAndoroid() {
 }
 
 // ★前部の割り込み関数
-void IRAM_ATTR isrPhoto1() {
+void IRAM_ATTR isrPhoto1()
+{
   unsigned long now = micros();
   unsigned long diff = now - lastTime1;
 
   // 5000マイクロ秒(5ミリ秒)未満の超高速な反応は「光の反射ノイズ」として無視！
-  if (diff > 5000) {
-    if (interval1 == 0) {
-      interval1 = diff;  // 初回はそのまま記録
-    } else {
-      interval1 = (interval1 + diff) / 2;  // 過去のデータと平均をとってブレを吸収！
+  if (diff > 5000)
+  {
+    if (interval1 == 0)
+    {
+      interval1 = diff; // 初回はそのまま記録
+    }
+    else
+    {
+      interval1 = (interval1 + diff) / 2; // 過去のデータと平均をとってブレを吸収！
     }
     lastTime1 = now;
   }
 }
 
 // ★後部の割り込み関数
-void IRAM_ATTR isrPhoto2() {
+void IRAM_ATTR isrPhoto2()
+{
   unsigned long now = micros();
   unsigned long diff = now - lastTime2;
 
-  if (diff > 5000) {
-    if (interval2 == 0) {
+  if (diff > 5000)
+  {
+    if (interval2 == 0)
+    {
       interval2 = diff;
-    } else {
+    }
+    else
+    {
       interval2 = (interval2 + diff) / 2;
     }
     lastTime2 = now;
   }
 }
 
-void calcRPM() {
-  noInterrupts();  // データを安全に取り出すため一瞬だけ割り込みをストップ
+void calcRPM()
+{
+  noInterrupts(); // データを安全に取り出すため一瞬だけ割り込みをストップ
   unsigned long current_interval1 = interval1;
   unsigned long current_lastTime1 = lastTime1;
   unsigned long current_interval2 = interval2;
   unsigned long current_lastTime2 = lastTime2;
-  interrupts();  // すぐに再開
+  interrupts(); // すぐに再開
 
   // 安全対策：0.7秒以上パルスが来ていなければ「回転が止まった」とみなす
   unsigned long currentMicros = micros();
 
   // 【前部の計算】
   // 0.7秒経過、またはまだ1度も計測されていない場合は 0 にする
-  if (currentMicros - current_lastTime1 > 700000 || current_lastTime1 == 0) {
+  if (currentMicros - current_lastTime1 > 700000 || current_lastTime1 == 0)
+  {
     front_rpm = 0;
-    interval1 = 0;  // 完全に止まったら間隔もリセット
-  } else if (current_interval1 > 0) {
+    interval1 = 0; // 完全に止まったら間隔もリセット
+  }
+  else if (current_interval1 > 0)
+  {
     // (1スリットの間隔) × スリット総数 ＝ 1回転にかかる時間
     double time_per_rev1 = current_interval1 * slits;
-    front_rpm = (int)(60000000.0 / time_per_rev1);  // 1分(6000万us) ÷ 1回転の時間
+    front_rpm = (int)(60000000.0 / time_per_rev1); // 1分(6000万us) ÷ 1回転の時間
   }
 
   // 【後部の計算】
-  if (currentMicros - current_lastTime2 > 700000 || current_lastTime2 == 0) {
+  if (currentMicros - current_lastTime2 > 700000 || current_lastTime2 == 0)
+  {
     rear_rpm = 0;
     interval2 = 0;
-  } else if (current_interval2 > 0) {
+  }
+  else if (current_interval2 > 0)
+  {
     double time_per_rev2 = current_interval2 * slits;
     rear_rpm = (int)(60000000.0 / time_per_rev2);
   }
@@ -784,11 +902,15 @@ void calcRPM() {
   avg_rpm = p_rpm / 2.0;
 }
 
-void confirmICM() {
-  Wire.beginTransmission(0x68);  // ※もし常にエラーになる場合は 0x69 に変えてみてください
-  if (Wire.endTransmission() == 0) {
-    imu_active = true;  // 返事あり！生きている
-  } else {
-    imu_active = false;  // 返事なし！エラー発生
+void confirmICM()
+{
+  Wire.beginTransmission(0x68); // ※もし常にエラーになる場合は 0x69 に変えてみてください
+  if (Wire.endTransmission() == 0)
+  {
+    imu_active = true; // 返事あり！生きている
+  }
+  else
+  {
+    imu_active = false; // 返事なし！エラー発生
   }
 }

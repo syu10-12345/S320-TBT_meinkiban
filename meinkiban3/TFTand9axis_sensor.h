@@ -665,13 +665,17 @@ public:
         topTriinitializer();
     }
 
-    void getPitchAndRoll(double *p, double *r, double *pr = nullptr)
+    void getPitchAndRoll(double *p, double *r, double *pr = nullptr, double *rr = nullptr)
     {
         if (!_calibrated)
         {
             *p = 0.0;
             *r = 0.0;
-            if (pr) *pr = 0.0;
+            if (pr)
+                *pr = 0.0;
+            if (rr)
+                *rr = 0.0;
+
             return;
         }
         myIMU.readSensor();
@@ -683,7 +687,13 @@ public:
         {
             xyzFloat gyrVal;
             myIMU.getGyrValues(&gyrVal);
-            *pr = gyrVal.y;  // ピッチ軸の角速度 [°/s]
+            *pr = gyrVal.y; // ピッチ軸の角速度 [°/s]
+        }
+        if (rr)
+        {
+            xyzFloat gyrVal;
+            myIMU.getGyrValues(&gyrVal);
+            *rr = gyrVal.z; // ロール軸の角速度 [°/s]
         }
     }
 
