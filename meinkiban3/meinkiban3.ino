@@ -1,5 +1,4 @@
 #include <Wire.h>
-#include <NimBLEDevice.h>
 #include <Adafruit_MCP23X17.h>
 #include <ICM20948_WE.h>
 #include <TFT_eSPI.h>
