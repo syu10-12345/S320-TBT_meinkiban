@@ -39,7 +39,7 @@ struct ControlData {
   float E_steer, R_steer;
   float E_trim, E_angle, R_angle;
   float e_servo_temp, r_servo_temp;
-  char control_mode[12];
+  bool is_assisted;
 };
 struct NavigationData {
   uint32_t magic;
@@ -423,12 +423,7 @@ void mainloop(void *pvParameters) {
     nv.R_angle = (getpos0 != -1) ? krs2rud((float)getpos0) : -1;
     nv.e_servo_temp = cachedTempE;
     nv.r_servo_temp = cachedTempR;
-    memset(nv.control_mode, 0, sizeof(nv.control_mode));
-    strncpy(
-      nv.control_mode, 
-      (is_pid && pitchLinkOk && is_center) ? "assisted" : "manual", 
-      sizeof(nv.control_mode) - 1
-    );
+    nv.is_assisted = (is_pid && pitchLinkOk && is_center);
 
     esp_now_send(BROADCAST_MAC, (uint8_t *)&nv, sizeof(nv));
 
