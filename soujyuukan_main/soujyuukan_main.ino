@@ -140,7 +140,6 @@ double pidCompute(PidState *state, double error, double gyroRate, double dt) {
   double output = state->kp * error + state->ki * state->integral + state->kd * derivative;
 
   state->lastError = error;
-  state->lastTime = now;
 
   return output;
 }
@@ -380,6 +379,7 @@ void mainloop(void *pvParameters) {
     double dt = (now - pidElevator.lastTime) / 1000.0;
     if (dt <= 0) dt = 0.001;
     float tempDegE = pidCompute(&pidElevator, errorE, currentPitchRate,dt);
+    pidElevator.lastTime = now;
 
     // 通信断フェイルセーフ: 300ms pitch を受信していなければ PID を使わない
     bool pitchLinkOk = (millis() - g_lastPitchRecvMs < PITCH_LINK_TIMEOUT_MS);
@@ -424,8 +424,8 @@ void mainloop(void *pvParameters) {
     nv.E_steer = fmap(adcE, (float)elergs[0], (float)elergs[3], -30.f, 30.f);
     nv.R_steer = fmap(adcR, (float)rudrgs[0], (float)rudrgs[3], -30.f, 30.f);
     nv.E_trim = Trimelevetor;
-    nv.E_angle = (getpos1 != -1) ? krs2ele((float)getpos1) : 0.f;
-    nv.R_angle = (getpos0 != -1) ? krs2rud((float)getpos0) : 0.f;
+    nv.E_angle = (getpos1 != -1) ? krs2ele((float)getpos1) : -1;
+    nv.R_angle = (getpos0 != -1) ? krs2rud((float)getpos0) : -1;
     nv.e_servo_temp = cachedTempE;
     nv.r_servo_temp = cachedTempR;
     memset(nv.control_mode, 0, sizeof(nv.control_mode));
