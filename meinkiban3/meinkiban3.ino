@@ -662,7 +662,6 @@ void loopGPS() {
   epoch_time = mktime(&timeinfo);
 
   fixType = (int)mygnss.get(GNSS_FIX_TYPE);
-  fixType = 3;
 }
 
 void sendAndoroid() {

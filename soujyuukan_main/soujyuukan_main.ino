@@ -416,8 +416,6 @@ void mainloop(void *pvParameters) {
     ControlData nv;
     nv.magic = MAGIC;
     nv.role = ROLE_SOUJYUUKAN;
-    float adcE = constrain((float)rawEle, (float)elergs[0], (float)elergs[3]);
-    float adcR = constrain((float)rawRud, (float)rudrgs[0], (float)rudrgs[3]);
     nv.E_steer = (float)rawEle;
     nv.R_steer = (float)rawRud;
     nv.E_trim = Trimelevetor;
