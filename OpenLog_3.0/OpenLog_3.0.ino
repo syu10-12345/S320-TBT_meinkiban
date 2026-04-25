@@ -46,7 +46,7 @@ struct FullTelemetryPacket {
 
 bool diagOk = false; //OpenLog診断が成功したかどうか。
 bool openlogReady = false;
-bool bleConnected = true;//ESPNOWはUDPに近いのでこの概念がない。
+unsigned long lastOnRecv = 0;
 String currentLogFile = "";
 
 unsigned long lastBlinkMs = 0;
@@ -54,8 +54,9 @@ bool ledState = false;
 
 // ===============================
 // LED
-// 診断成功後: 2秒おき点滅
-// BLE接続中: 点灯
+// 診断未成功: 消灯
+// 受信中 (直近2秒以内に onRecv あり): 点灯
+// 受信なし: 2秒おき点滅
 // ===============================
 void updateLed() {
   if (!diagOk) {
@@ -63,12 +64,12 @@ void updateLed() {
     return;
   }
 
-  if (bleConnected) {
+  unsigned long now = millis();
+  if (now - lastOnRecv < 2000) {
     digitalWrite(LED_PIN, HIGH);
     return;
   }
 
-  unsigned long now = millis();
   if (now - lastBlinkMs >= 2000) {
     lastBlinkMs = now;
     ledState = !ledState;
@@ -479,6 +480,7 @@ void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
   memcpy(&p,data,sizeof(p));
   if(p.magic != MAGIC) return;
   if(p.role != ROLE_MEINKIBAN3) return;
+  lastOnRecv = millis();
   String line = packetToCsv(p);
   OpenLog.print(line);
   OpenLog.print("\r\n");
@@ -520,7 +522,7 @@ void setup() {
   delay(500);
 
   Serial.println();
-  Serial.println("=== OpenLog BLE Logger Boot ===");
+  Serial.println("=== OpenLog ESP-NOW Logger Boot ===");
   Serial.print("sizeof(FullTelemetryPacket) = ");
   Serial.println(sizeof(FullTelemetryPacket));
 
