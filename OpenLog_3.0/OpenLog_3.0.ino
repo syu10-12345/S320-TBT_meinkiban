@@ -253,7 +253,7 @@ String csvHeader() {
     "altitude,heading,"
     "air_speed,gnd_speed,"
     "pitch,roll,"
-    "pitch_rate,roll_rate"
+    "pitch_rate,roll_rate,"
     "front_rpm,rear_rpm,"
     "E_steer,R_steer,E_trim,E_angle,R_angle,"
     "e_servo_temp,r_servo_temp,is_assisted,"
