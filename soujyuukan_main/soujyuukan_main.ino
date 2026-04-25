@@ -5,6 +5,7 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
+#include "DeadzoneResult.h"
 #include "PidState.h"
 
 
@@ -203,10 +204,6 @@ int getMedian(int *array, int size) {
   }
   return temp[copySize / 2];  // 中央の値を返す
 }
-struct DeadzoneResult {
-  float mappedValue;  // デッドゾーン処理後の値
-  bool isCenter;      // 現在中央（デッドゾーン内）にいるかどうかの判定
-};
 DeadzoneResult detzoneMapping(int *ary, int x, float min, float med, float max) {
   DeadzoneResult r;
   r.isCenter = false;
@@ -268,8 +265,10 @@ static void resetNeutralGesture() {
   neutralWasInBand = false;
 }
 
+int TrimE_temp;
 void trimElevetor() {
   int TrimE = analogRead(trimE);
+  TrimE_temp = TrimE;
   const bool inNeutralBand = (2000 <= TrimE && TrimE <= 2300);
 
   if (0 <= TrimE && TrimE <= 100) {  //優先度1
@@ -427,7 +426,7 @@ void mainloop(void *pvParameters) {
 
     esp_now_send(BROADCAST_MAC, (uint8_t *)&nv, sizeof(nv));
 
-    Serial.printf("E:%.1f R:%.1f krs:%d,%d raw:%d,%d getPos:%d,%d pitch:%.1f pid:%.1f\n", degE, degR, krsE, krsR, rawEle, rawRud, getpos0, getpos1, currentPitch, tempDegE);
+    Serial.printf("E:%.1f R:%.1f krs:%d,%d raw:%d,%d getPos:%d,%d pitch:%.1f pid:%.1f temp:%d\n", degE, degR, krsE, krsR, rawEle, rawRud, getpos0, getpos1, currentPitch, tempDegE,TrimE_temp);
 
     vTaskDelayUntil(&xLastWakeTime, xFrequency);
   }
