@@ -142,7 +142,7 @@ double rear_rpm = 0.0;
 int photo1;
 int photo2;
 int tktsw;
-int tgrsw;
+volatile int tgrsw;
 double pitch_rad;
 double roll_rad;
 double lat;
@@ -196,6 +196,8 @@ void IRAM_ATTR isrPhoto1();
 void IRAM_ATTR isrPhoto2();
 void calcRPM();
 void sendCtrlStick();
+void sendLogger();
+void commTask(void *pvParameters);
 bool mcp_active = false;  // MCPが正しく認識されたか管理するフラグ
 bool ultra_active = false;
 bool gps_active = false;
@@ -277,6 +279,9 @@ void setup() {
 
   esp_now_register_send_cb(onSent);
   esp_now_register_recv_cb(onRecv);
+
+  // 通信処理を Core 0 に分離。loop() (Core 1) の画面更新と干渉させない
+  xTaskCreatePinnedToCore(commTask, "commTask", 4096, NULL, 1, NULL, 0);
 }
 
 void loop() {
@@ -319,25 +324,11 @@ void loop() {
 
   static unsigned long lastPrint1 = 0;
   static unsigned long lastPrint2 = 50;
-  static unsigned long lastCtrlSend = 0;
   instrumentPanel.getPitchAndRoll(&pitch_rad, &roll_rad, &pitch_rate, &roll_rate);
   // heading = instrumentPanel.getHeading(pitch_rad, roll_rad);
   instrumentPanel.updata(E_trim, air_speed, front_rpm, Altitude);
   pitch = pitch_rad * (180.0 / PI);
   roll = roll_rad * (180.0 / PI);
-
-  // 操縦桿基板へ pitch/pitch_rate を定期送信 (50Hz 相当)
-  if (millis() - lastCtrlSend >= 20) {
-    sendCtrlStick();
-    lastCtrlSend = millis();
-  }
-
-  // トリガスイッチ ON のときだけロガーへフルテレメトリを送信 (50Hz 相当)
-  static unsigned long lastLoggerSend = 0;
-  if (tgrsw == HIGH && millis() - lastLoggerSend >= 20) {
-    sendLogger();
-    lastLoggerSend = millis();
-  }
 
   if (millis() - lastPrint1 >= interval) {
     tgrsw = digitalRead(tgrsw_PIN);
@@ -357,6 +348,21 @@ void loop() {
 }
 
 /* ===== 関数定義 ===== */
+// Core 0 で 50Hz の ESP-NOW 送信を担当する。
+// 画面更新やセンサ I/O が走る loop() (Core 1) と分離することで、
+// Wi-Fi 送信と SPI/I2C のリソース競合による表示の引っかかりを抑える。
+void commTask(void *pvParameters) {
+  const TickType_t xFrequency = 20 / portTICK_PERIOD_MS;
+  TickType_t xLastWakeTime = xTaskGetTickCount();
+  while (1) {
+    sendCtrlStick();
+    if (tgrsw == HIGH) {
+      sendLogger();
+    }
+    vTaskDelayUntil(&xLastWakeTime, xFrequency);
+  }
+}
+
 void sendCtrlStick() {
   NavigationData navData;
   navData.magic = MAGIC;
