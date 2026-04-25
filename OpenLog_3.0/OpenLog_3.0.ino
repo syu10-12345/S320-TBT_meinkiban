@@ -261,38 +261,44 @@ String csvHeader() {
     "err0,err1,err2,err3,err4,err5,err6,err7,err8,err9,err10,err11";
 }
 
-String packetToCsv(const FullTelemetryPacket& p) {
-  String s;
-  s.reserve(360);
-
-  s += String((uint32_t)p.epoch_time); s += ",";
-  s += String(p.lat, 7); s += ",";
-  s += String(p.lon, 7); s += ",";
-  s += String(p.Altitude, 3); s += ",";
-  s += String(p.heading, 3); s += ",";
-  s += String(p.air_speed, 3); s += ",";
-  s += String(p.gnd_speed, 3); s += ",";
-  s += String(p.pitch, 3); s += ",";
-  s += String(p.roll, 3); s += ",";
-  s += String(p.pitch_rate, 7); s += ",";
-  s += String(p.roll_rate, 7); s += ",";
-  s += String(p.front_rpm, 1); s += ",";
-  s += String(p.rear_rpm, 1); s += ",";
-  s += String(p.E_steer, 3); s += ",";
-  s += String(p.R_steer, 3); s += ",";
-  s += String(p.E_trim, 3); s += ",";
-  s += String(p.E_angle, 3); s += ",";
-  s += String(p.R_angle, 3); s += ",";
-  s += String(p.e_servo_temp, 3); s += ",";
-  s += String(p.r_servo_temp, 3); s += ",";
-  s += String(p.is_assisted ? "1" : "0");
-
-  for (int i = 0; i < 12; i++) {
-    s += ",";
-    s += p.electrical_errors[i] ? "1" : "0";
-  }
-
-  return s;
+// CSV1行を buf に書き出す。返り値は書き込んだバイト数 (NUL 含まず)。
+// バッファ不足で切り詰められた場合は (size_t)-1 を返す。
+size_t packetToCsv(const FullTelemetryPacket& p, char* buf, size_t bufsize) {
+  int n = snprintf(buf, bufsize,
+    "%lu,"
+    "%.7f,%.7f,"
+    "%.3f,%.3f,"
+    "%.3f,%.3f,"
+    "%.3f,%.3f,"
+    "%.7f,%.7f,"
+    "%.1f,%.1f,"
+    "%.3f,%.3f,%.3f,%.3f,%.3f,"
+    "%.3f,%.3f,%d,"
+    "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
+    (unsigned long)p.epoch_time,
+    p.lat, p.lon,
+    p.Altitude, p.heading,
+    p.air_speed, p.gnd_speed,
+    p.pitch, p.roll,
+    p.pitch_rate, p.roll_rate,
+    p.front_rpm, p.rear_rpm,
+    p.E_steer, p.R_steer, p.E_trim, p.E_angle, p.R_angle,
+    p.e_servo_temp, p.r_servo_temp, p.is_assisted ? 1 : 0,
+    p.electrical_errors[0]  ? 1 : 0,
+    p.electrical_errors[1]  ? 1 : 0,
+    p.electrical_errors[2]  ? 1 : 0,
+    p.electrical_errors[3]  ? 1 : 0,
+    p.electrical_errors[4]  ? 1 : 0,
+    p.electrical_errors[5]  ? 1 : 0,
+    p.electrical_errors[6]  ? 1 : 0,
+    p.electrical_errors[7]  ? 1 : 0,
+    p.electrical_errors[8]  ? 1 : 0,
+    p.electrical_errors[9]  ? 1 : 0,
+    p.electrical_errors[10] ? 1 : 0,
+    p.electrical_errors[11] ? 1 : 0
+  );
+  if (n < 0 || (size_t)n >= bufsize) return (size_t)-1;
+  return (size_t)n;
 }
 
 // ===============================
@@ -481,9 +487,13 @@ void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
   if(p.magic != MAGIC) return;
   if(p.role != ROLE_MEINKIBAN3) return;
   lastOnRecv = millis();
-  String line = packetToCsv(p);
-  line += "\r\n";
-  OpenLog.print(line);
+
+  char buf[384];
+  size_t n = packetToCsv(p, buf, sizeof(buf) - 2);
+  if (n == (size_t)-1) return;  // 切り詰められたら欠損行を吐かない
+  buf[n++] = '\r';
+  buf[n++] = '\n';
+  OpenLog.write((const uint8_t*)buf, n);
 }
 
 
