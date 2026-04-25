@@ -253,6 +253,7 @@ String csvHeader() {
     "altitude,heading,"
     "air_speed,gnd_speed,"
     "pitch,roll,"
+    "pitch_rate,roll_rate"
     "front_rpm,rear_rpm,"
     "E_steer,R_steer,E_trim,E_angle,R_angle,"
     "e_servo_temp,r_servo_temp,control_mode,"
@@ -270,8 +271,10 @@ String packetToCsv(const FullTelemetryPacket& p) {
   s += String(p.heading, 3); s += ",";
   s += String(p.air_speed, 3); s += ",";
   s += String(p.gnd_speed, 3); s += ",";
-  s += String(p.nav.pitch, 3); s += ",";
+  s += String(p.pitch, 3); s += ",";
   s += String(p.roll, 3); s += ",";
+  s += String(p.pitch_rate, 7); s += ",";
+  s += String(p.roll_rate, 7); s += ",";
   s += String(p.front_rpm, 1); s += ",";
   s += String(p.rear_rpm, 1); s += ",";
   s += String(p.ctrl.E_steer, 3); s += ",";
