@@ -1,7 +1,4 @@
 #include <Arduino.h>
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
 
 // ===============================
 // ピン設定
