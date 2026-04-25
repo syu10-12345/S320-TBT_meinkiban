@@ -15,49 +15,36 @@ static const int LED_PIN = 2;
 // ===============================
 HardwareSerial OpenLog(1);
 
-// ===============================
-// BLE UUID
-// main基板と一致
-// ===============================
-#define serviceUUID "AAAA0001-1fb5-459e-8fcc-c5c9c331914b"
-#define charUUID    "AAAA0002-36e1-4688-b7f5-ea07361b26a8"
 
-// ===============================
-// main基板に合わせた受信構造体
-// ※ main基板は変更しない前提
-// ※ 実測108バイト想定
-// ===============================
+
+static const uint8_t WIFI_CHANNEL = 1;
+static uint8_t BROADCAST_MAC[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+
 #pragma pack(push, 1)
-struct ControlData {
+struct FullTelemetryPacket {
+  uint32_t magic;
+  uint8_t role;
   float E_steer, R_steer;
   float E_trim, E_angle, R_angle;
   float e_servo_temp, r_servo_temp;
-  char control_mode[12];
-};
-
-struct NavigationData {
+  bool is_assisted;
   float pitch;
-};
-
-struct FullTelemetryPacket {
-  ControlData ctrl;              // 40
-  NavigationData nav;            // 4  -> 44
-  float front_rpm, rear_rpm;     // 8  -> 52
-  float air_speed, gnd_speed, Altitude, heading; // 16 -> 68
-  uint32_t _pad_for_double;      // 4  -> 72
-  double lat, lon;               // 16 -> 88
-  float roll;                    // 4  -> 92
-  uint32_t epoch_time;           // 4  -> 96
-  bool electrical_errors[12];    // 12 -> 108
+  float roll;
+  float pitch_rate;
+  float roll_rate;
+  float front_rpm, rear_rpm;
+  float air_speed, gnd_speed, Altitude, heading;
+  double lat, lon;
+  uint32_t epoch_time;
+  bool electrical_errors[12];
 };
 #pragma pack(pop)
+#define MAGIC 0x53333230u
+#define ROLE_MEINKIBAN3 1
+#define ROLE_LOGGER 3
 
-// ===============================
-// 状態
-// ===============================
-BLECharacteristic* pCharacteristic = nullptr;
 
-bool diagOk = false;
+bool diagOk = false; //OpenLog診断が成功したかどうか。
 bool openlogReady = false;
 bool bleConnected = false;
 String currentLogFile = "";
@@ -524,27 +511,30 @@ class LoggerCallbacks : public BLECharacteristicCallbacks {
   }
 };
 
-void setupBLE() {
-  BLEDevice::init("C3-LOGGER");
+void setupESPNOW() {
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  esp_wifi_set_channel(WIFI_CHANNEL, WIFI_SECOND_CHAN_NONE);
 
-  BLEServer* pServer = BLEDevice::createServer();
-  pServer->setCallbacks(new MyServerCallbacks());
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("[error] esp_now_init 失敗");
+    while (1)
+      delay(500);
+  }
 
-  BLEService* pService = pServer->createService(serviceUUID);
+  esp_now_peer_info_t peer = {};             // 構造体を全部ゼロで初期化
+  memcpy(peer.peer_addr, BROADCAST_MAC, 6);  // 宛先 MAC をコピー
+  peer.channel = WIFI_CHANNEL;               // 同じチャンネルを指定
+  peer.encrypt = false;                      // ブロードキャストは暗号化不可
+  if (esp_now_add_peer(&peer) != ESP_OK) {
+    Serial.println("[error] add_peer 失敗");
+    while (1)
+      delay(1000);
+  }
 
-  pCharacteristic = pService->createCharacteristic(
-    charUUID,
-    BLECharacteristic::PROPERTY_WRITE
-  );
-  pCharacteristic->setCallbacks(new LoggerCallbacks());
-
-  pService->start();
-
-  BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
-  pAdvertising->addServiceUUID(serviceUUID);
-  pAdvertising->start();
-
-  Serial.println("BLE logger ready");
+  esp_now_register_send_cb(onSent);
+  esp_now_register_recv_cb(onRecv);
+  Serial.println("ESPNOW logger ready");
 }
 
 // ===============================
@@ -581,7 +571,7 @@ void setup() {
     return;
   }
 
-  setupBLE();
+  setupESPNOW();
 }
 
 void loop() {
