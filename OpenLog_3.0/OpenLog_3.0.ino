@@ -256,7 +256,7 @@ String csvHeader() {
     "pitch_rate,roll_rate"
     "front_rpm,rear_rpm,"
     "E_steer,R_steer,E_trim,E_angle,R_angle,"
-    "e_servo_temp,r_servo_temp,control_mode,"
+    "e_servo_temp,r_servo_temp,is_assisted,"
     "err0,err1,err2,err3,err4,err5,err6,err7,err8,err9,err10,err11";
 }
 
@@ -277,18 +277,18 @@ String packetToCsv(const FullTelemetryPacket& p) {
   s += String(p.roll_rate, 7); s += ",";
   s += String(p.front_rpm, 1); s += ",";
   s += String(p.rear_rpm, 1); s += ",";
-  s += String(p.ctrl.E_steer, 3); s += ",";
-  s += String(p.ctrl.R_steer, 3); s += ",";
-  s += String(p.ctrl.E_trim, 3); s += ",";
-  s += String(p.ctrl.E_angle, 3); s += ",";
-  s += String(p.ctrl.R_angle, 3); s += ",";
-  s += String(p.ctrl.e_servo_temp, 3); s += ",";
-  s += String(p.ctrl.r_servo_temp, 3); s += ",";
-  s += String(p.ctrl.control_mode);
+  s += String(p.E_steer, 3); s += ",";
+  s += String(p.R_steer, 3); s += ",";
+  s += String(p.E_trim, 3); s += ",";
+  s += String(p.E_angle, 3); s += ",";
+  s += String(p.R_angle, 3); s += ",";
+  s += String(p.e_servo_temp, 3); s += ",";
+  s += String(p.r_servo_temp, 3); s += ",";
+  s += String(p.is_assisted ? "1" : "0");
 
   for (int i = 0; i < 12; i++) {
     s += ",";
-    s += p.electrical_errors[i] ? "1" : "0";;
+    s += p.electrical_errors[i] ? "1" : "0";
   }
 
   return s;
