@@ -46,7 +46,7 @@ struct FullTelemetryPacket {
 
 bool diagOk = false; //OpenLog診断が成功したかどうか。
 bool openlogReady = false;
-bool bleConnected = false;
+bool bleConnected = true;//ESPNOWはUDPに近いのでこの概念がない。
 String currentLogFile = "";
 
 unsigned long lastBlinkMs = 0;
@@ -246,10 +246,6 @@ bool readSmallFileClean(const String &name, String &out, unsigned long overall_m
 // ===============================
 // CSV
 // ===============================
-String boolToStr(bool v) {
-  return v ? "1" : "0";
-}
-
 String csvHeader() {
   return
     "epoch_time,"
@@ -289,7 +285,7 @@ String packetToCsv(const FullTelemetryPacket& p) {
 
   for (int i = 0; i < 12; i++) {
     s += ",";
-    s += boolToStr(p.electrical_errors[i]);
+    s += p.electrical_errors[i] ? "1" : "0";;
   }
 
   return s;
@@ -472,44 +468,19 @@ bool setupOpenLogLogging() {
 }
 
 // ===============================
-// BLE
+// onRecv
 // ===============================
-class MyServerCallbacks : public BLEServerCallbacks {
-  void onConnect(BLEServer* pServer) override {
-    bleConnected = true;
-    Serial.println("BLE connected");
-  }
+void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
+  if (len != sizeof(FullTelemetryPacket)) return;
+  FullTelemetryPacket p;
+  memcpy(&p,data,sizeof(p));
+  if(p.magic != MAGIC) return;
+  if(p.role != ROLE_MEINKIBAN3) return;
+  String line = packetToCsv(p);
+  OpenLog.print(line);
+  OpenLog.print("\r\n");
+}
 
-  void onDisconnect(BLEServer* pServer) override {
-    bleConnected = false;
-    Serial.println("BLE disconnected");
-    BLEDevice::startAdvertising();
-  }
-};
-
-class LoggerCallbacks : public BLECharacteristicCallbacks {
-  void onWrite(BLECharacteristic* pChar) override {
-    if (!openlogReady) return;
-
-    size_t len = pChar->getLength();
-    uint8_t* data = pChar->getData();
-
-    if (len != sizeof(FullTelemetryPacket)) {
-      Serial.print("Packet size mismatch: ");
-      Serial.print(len);
-      Serial.print(" / expected: ");
-      Serial.println(sizeof(FullTelemetryPacket));
-      return;
-    }
-
-    FullTelemetryPacket packet;
-    memcpy(&packet, data, sizeof(packet));
-
-    String line = packetToCsv(packet);
-    OpenLog.print(line);
-    OpenLog.print("\r\n");
-  }
-};
 
 void setupESPNOW() {
   WiFi.mode(WIFI_STA);
@@ -531,8 +502,6 @@ void setupESPNOW() {
     while (1)
       delay(1000);
   }
-
-  esp_now_register_send_cb(onSent);
   esp_now_register_recv_cb(onRecv);
   Serial.println("ESPNOW logger ready");
 }
