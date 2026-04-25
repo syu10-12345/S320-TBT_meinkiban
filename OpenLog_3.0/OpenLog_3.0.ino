@@ -482,8 +482,8 @@ void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
   if(p.role != ROLE_MEINKIBAN3) return;
   lastOnRecv = millis();
   String line = packetToCsv(p);
+  line += "\r\n";
   OpenLog.print(line);
-  OpenLog.print("\r\n");
 }
 
 
