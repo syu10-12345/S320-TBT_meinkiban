@@ -128,7 +128,7 @@ void onSent(const wifi_tx_info_t *tx_info, esp_now_send_status_t status) {
 
 /* ===== グローバル変数 ===== */
 unsigned long previousMillis = 0;  // 前回の更新時間を保存
-const long interval = 120;         // 更新間隔（ミリ秒）
+const long interval = 120*2;         // 更新間隔（ミリ秒）
 double pitch = 0.0;
 double pitch_rate = 0.0;  // ジャイロ ピッチレート [°/s]
 double roll_rate = 0.0;   // ジャイロ ロールレート [°/s]
