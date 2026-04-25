@@ -259,6 +259,7 @@ void setup() {
   // ESP-NOWの初期設定
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
+  WiFi.setSleep(false);
   esp_wifi_set_channel(WIFI_CHANNEL, WIFI_SECOND_CHAN_NONE);
 
   if (esp_now_init() != ESP_OK) {
