@@ -134,7 +134,9 @@ double pitch_rate = 0.0;  // ジャイロ ピッチレート [°/s]
 double roll_rate = 0.0;   // ジャイロ ロールレート [°/s]
 double roll = 0.0;
 double heading = 0.0;
+double raw_Altitude = 0.0;
 double Altitude = 0.0;
+double Alt_offset = 0.0;
 double air_speed = 0.0;
 double gnd_speed = 0.0;
 double front_rpm = 0.0;
@@ -240,6 +242,9 @@ void setup() {
 
   instrumentPanel.begin();
 
+  ref_alt = instrumentPanel.returnRef_alt();
+  Alt_offset = instrumentPanel.returnAlt_offset();
+
   if (mcp.begin_I2C(0x20, &Wire1)) {
     // Serial.println("MCP23017 Init OK");
     mcp.pinMode(LED1, OUTPUT);
@@ -295,11 +300,13 @@ void loop() {
     static unsigned long highStartTime = 0;
     static bool wasTriggered = false;
     if (tktsw == HIGH) {
-      ref_alt = alt;
-      instrumentPanel.getRef_alt(ref_alt);
       if (highStartTime == 0)
         highStartTime = millis();
       if (!wasTriggered && millis() - highStartTime > 500) {
+        ref_alt = alt;
+        Alt_offset = raw_Altitude;
+        instrumentPanel.getRef_alt(ref_alt);
+        instrumentPanel.getAlt_offset(Alt_offset);
         wasTriggered = true;
         instrumentPanel.calibrate();
       }
@@ -500,7 +507,8 @@ void readAltimeter() {
     // 読み取り成功
     byte high = Wire.read();
     byte low = Wire.read();
-    Altitude = ((double)((high << 8) | low) / 100) - 0.3;
+    raw_Altitude = ((double)((high << 8) | low) / 100);
+    Altitude = raw_Altitude - Alt_offset;
     ultra_active = true;
     if (Altitude > 7.30) {
       Altitude = alt;

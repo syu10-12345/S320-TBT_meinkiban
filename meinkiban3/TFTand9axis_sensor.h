@@ -29,7 +29,6 @@ private:
 
   double pitch;
   double roll;
-  float ref_alt;
 
   typedef struct
   {
@@ -522,6 +521,7 @@ private:
       gyrOfs.y = _prefs.getFloat("gy", 0);
       gyrOfs.z = _prefs.getFloat("gz", 0);
       ref_alt = _prefs.getFloat("ref_alt", 0);
+      Alt_offset = _prefs.getFloat("Alt_offset",0);
       _prefs.end();
       myIMU.setAccOffsets(accOfs);
       myIMU.setGyrOffsets(gyrOfs);
@@ -542,6 +542,7 @@ private:
     _prefs.putFloat("gy", gyrOfs.y);
     _prefs.putFloat("gz", gyrOfs.z);
     _prefs.putFloat("ref_alt", ref_alt);
+    _prefs.putFloat("Alt_offset",Alt_offset);
     _prefs.putBool("valid", true);
     _prefs.end();
   }
@@ -549,6 +550,9 @@ private:
 public:
   TFTand9axis_sensor()
     : tft(), fixedSprite(&tft), dynamicSprite(&tft), myIMU(ICM20948_ADDR) {}
+
+  float ref_alt;
+  float Alt_offset;
 
   void applyIMUSettings() {
     myIMU.setAccRange(ICM20948_ACC_RANGE_2G);
@@ -721,9 +725,22 @@ public:
     return _calibrated;
   }
 
-  void getRef_alt(double a1t) {
+  void getRef_alt(double a1t) {    //meinkiban3.inoで設定したref_altをTFTand9axixs_sensor.hでも使用できるようにする
     ref_alt = (float)a1t;
   }
+
+  void getAlt_offset(double Altitude){ //meinkiban3.inoで設定したAlt_offsetをTFTand9axixs_sensor.hでも使用できるようにする
+    Alt_offset = (float)Altitude;
+  }
+
+  float returnRef_alt() {   //NVSに保存されたref_altをmeinkiban3.inoのsetup()で返す
+    return ref_alt;
+  }
+
+  float returnAlt_offset() { //NVSに保存されたAlt_offsetをmeinkiban3.inoのsetup()で返す
+    return Alt_offset;
+  }
+  
 
   void updata(float torim, double IAS, double rpm, double ALT) {
     if (!_calibrated) {
