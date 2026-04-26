@@ -137,6 +137,7 @@ double heading = 0.0;
 double raw_Altitude = 0.0;
 double Altitude = 0.0;
 double Alt_offset = 0.0;
+double Alt_limmit = 7.65 - 0.05; //7.65が高度計MB1242の測定限界、たまに高度計に近づきすぎたりすると7.65になってしまいしっかりと測定できていない場合があるため-0.05
 double air_speed = 0.0;
 double gnd_speed = 0.0;
 double front_rpm = 0.0;
@@ -510,7 +511,7 @@ void readAltimeter() {
     raw_Altitude = ((double)((high << 8) | low) / 100);
     Altitude = raw_Altitude - Alt_offset;
     ultra_active = true;
-    if (Altitude > 7.30) {
+    if (Altitude > Alt_limmit - Alt_offset) {
       Altitude = alt;
     }
   } else {
@@ -661,8 +662,8 @@ void loopGPS() {
   minute = mygnss.get(GNSS_MINUTE);
   second = mygnss.get(GNSS_SECOND);
   struct tm timeinfo;
-  if (0 < alt && alt < 7.30) {
-    alt = 7.3;
+  if (0 < alt && alt < Alt_limmit - Alt_offset) {
+    alt = Alt_limmit - offset;
   } else if (alt <= 0) {
     alt = 0;
   }
