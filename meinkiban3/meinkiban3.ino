@@ -128,7 +128,7 @@ void onSent(const wifi_tx_info_t *tx_info, esp_now_send_status_t status) {
 
 /* ===== グローバル変数 ===== */
 unsigned long previousMillis = 0;  // 前回の更新時間を保存
-const long interval = 120*10;         // 更新間隔（ミリ秒）
+const long interval = 100;         // 更新間隔（ミリ秒）
 double pitch = 0.0;
 double pitch_rate = 0.0;  // ジャイロ ピッチレート [°/s]
 double roll_rate = 0.0;   // ジャイロ ロールレート [°/s]
@@ -338,7 +338,7 @@ void loop() {
   pitch = pitch_rad * (180.0 / PI);
   roll = roll_rad * (180.0 / PI);
 
-  if (millis() - lastPrint1 >= 120) {
+  if (millis() - lastPrint1 >= interval) {
     tgrsw = digitalRead(tgrsw_PIN);
     readkisoku();
     confirmICM();
@@ -348,7 +348,7 @@ void loop() {
     lastPrint1 = millis();
   }
 
-  if (millis() - lastPrint2 >= 120) {
+  if (millis() - lastPrint2 >= interval) {
     //loopGPS();
     sendAndoroid();
     lastPrint2 = millis();
