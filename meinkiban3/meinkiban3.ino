@@ -662,8 +662,8 @@ void loopGPS() {
   minute = mygnss.get(GNSS_MINUTE);
   second = mygnss.get(GNSS_SECOND);
   struct tm timeinfo;
-  if (0 < alt && alt < Alt_limmit - Alt_offset) {
-    alt = Alt_limmit - offset;
+  if (0 < alt && alt < Alt_limmit) {
+    alt = Alt_limmit;
   } else if (alt <= 0) {
     alt = 0;
   }
