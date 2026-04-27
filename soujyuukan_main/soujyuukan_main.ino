@@ -75,11 +75,12 @@ void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
 
 // 実舵角 x[°]（分度器）→ KRS（多項式本体・逆映射用はクランプなし）
 static float ele2krs(float x) {
-  return 0.012577102329 * pow(x, 5) + 0.0194099102747 * pow(x, 4) - 0.634353764183 * pow(x, 3) - 0.815828278465 * pow(x, 2) + 185.794437174 * pow(x, 1) + 5701.22753031;
+  x = 0.012577102329 * pow(x, 5) + 0.0194099102747 * pow(x, 4) - 0.634353764183 * pow(x, 3) - 0.815828278465 * pow(x, 2) + 185.794437174 * pow(x, 1) + 5701.22753031;
+  return constrain(x,3500,8300);
 }
 
 static float rud2krs(float x) {
-  return -0.0105114837351 * pow(x, 5) - 0.0659075647903 * pow(x, 4) + 0.241297817826 * pow(x, 3) + 2.97624922026 * pow(x, 2) - 179.910899851 * pow(x, 1) + 6563.03984539;
+  (-0.0105114837351 * pow(x, 5) - 0.0659075647903 * pow(x, 4) + 0.241297817826 * pow(x, 3) + 2.97624922026 * pow(x, 2) - 179.910899851 * pow(x, 1) + 6563.03984539;
 }
 
 //KRS→ 舵角に変換する関数
@@ -231,7 +232,9 @@ int ELE;
 int RUD;
 
 int elergs[4] = { 1120, 1680, 1910, 2580 };  // エレベーター: 前限界, 前戻り, 後戻り, 後限界
-int rudrgs[4] = { 450, 650, 730, 1430 };
+//int rudrgs[4] = { 450, 650, 730, 1430 }; //操縦桿main
+int rudrgs[4] = {1724,2310,2610,3220}; //操縦桿sub
+
 
 int is_center = 0;
 void Potentiometer() {
@@ -329,6 +332,7 @@ void trimElevetor() {
       settingsChanged = false;
     }
   }
+  Trimelevetor = constrain(Trimelevetor,ElevatorDegMin+2,ElevatorDegMax-2);
 }
 
 void trimRudder() {
@@ -343,6 +347,12 @@ void trimRudder() {
     Trimrudder = Trimrudder - 0.1;
     settingsChanged = true;
   }
+
+  if (settingsChanged && nvmTaskHandle != NULL) {
+    xTaskNotifyGive(nvmTaskHandle);
+    settingsChanged = false;
+  }
+  Trimrudder = constrain(Trimrudder,RudderDegMin+2,RudderDegMax-2);
 }
 
 float cachedTempE = 0.0;  // エレベータサーボ温度キャッシュ
