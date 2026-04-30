@@ -24,6 +24,9 @@ const int trimR1 = 9;    //トリムラダー
 const int trimR2 = 10;   //トリムラダー
 
 
+//ADC検証モード
+int is_finADC = 0;
+
 
 volatile float currentPitch = 0.0f;
 volatile float currentPitchRate = 0.0f;
@@ -80,7 +83,8 @@ static float ele2krs(float x) {
 }
 
 static float rud2krs(float x) {
-  (-0.0105114837351 * pow(x, 5) - 0.0659075647903 * pow(x, 4) + 0.241297817826 * pow(x, 3) + 2.97624922026 * pow(x, 2) - 179.910899851 * pow(x, 1) + 6563.03984539;
+  x = -0.0105114837351 * pow(x, 5) - 0.0659075647903 * pow(x, 4) + 0.241297817826 * pow(x, 3) + 2.97624922026 * pow(x, 2) - 179.910899851 * pow(x, 1) + 6563.03984539;
+  return constrain(x,4000,8900);
 }
 
 //KRS→ 舵角に変換する関数
@@ -97,8 +101,8 @@ float krs2rud(float x) {
 float ElevatorDegMin = -5;
 float ElevatorDegMed = 0;
 float ElevatorDegMax = 5;
-float RudderDegMin = 9.3;  //-10.1
-float RudderDegMax = -9.3;
+float RudderDegMin = -9.3;  //-10.1
+float RudderDegMax = 9.3;
 
 IcsHardSerialClass krs(&Serial0, EN_PIN, BAUDRATE, TIMEOUT);  //インスタンス＋ENピン(8番ピン)およびUARTの指定
 
@@ -108,7 +112,7 @@ float neutralTrimeEle = 0.0;
 float Trimrudder = 0.0;
 
 
-int is_pid = 0;  //今PID制御をONにするかどうか(0か1)
+bool is_pid = 0;  //今PID制御をONにするかどうか(0か1)
 
 // PidState は PidState.h で定義
 PidState pidElevator;
@@ -186,25 +190,6 @@ float fmap(float x, float in_min, float in_max, float out_min, float out_max) {
   return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
 
-//中央値フィルタ
-int getMedian(int *array, int size) {
-  int temp[5];
-  // tempのサイズ(5)を超える場合は安全のため5に制限する
-  int copySize = size > 5 ? 5 : size;
-  for (int i = 0; i < copySize; i++) temp[i] = array[i];
-
-  // バブルソートで小さい順に並べ替え
-  for (int i = 0; i < copySize - 1; i++) {
-    for (int j = i + 1; j < copySize; j++) {
-      if (temp[i] > temp[j]) {
-        int t = temp[i];
-        temp[i] = temp[j];
-        temp[j] = t;
-      }
-    }
-  }
-  return temp[copySize / 2];  // 中央の値を返す
-}
 DeadzoneResult detzoneMapping(int *ary, int x, float min, float med, float max) {
   DeadzoneResult r;
   r.isCenter = false;
@@ -231,9 +216,9 @@ int rawRud = 0;
 int ELE;
 int RUD;
 
-int elergs[4] = { 1120, 1680, 1910, 2580 };  // エレベーター: 前限界, 前戻り, 後戻り, 後限界
-//int rudrgs[4] = { 450, 650, 730, 1430 }; //操縦桿main
-int rudrgs[4] = {1724,2310,2610,3220}; //操縦桿sub
+int elergs[4] = { 1120, 1500, 2000, 2580 };  // エレベーター: 前限界, 前戻り, 後戻り, 後限界
+int rudrgs[4] = { 450, 650, 730, 1430 }; //操縦桿main
+//int rudrgs[4] = {1724,2310,2610,3220}; //操縦桿sub
 
 
 int is_center = 0;
@@ -245,20 +230,26 @@ void Potentiometer() {
   DeadzoneResult eler = detzoneMapping(elergs, rawEle, ElevatorDegMax, ElevatorDegMed, ElevatorDegMin);
   elevetor = eler.mappedValue;
   is_center = eler.isCenter;
-  DeadzoneResult rudr = detzoneMapping(rudrgs, rawRud, RudderDegMin, (RudderDegMin + RudderDegMax) / 2, RudderDegMax);
+  DeadzoneResult rudr = detzoneMapping(rudrgs, rawRud, RudderDegMax, 0, RudderDegMin);
   rudder = rudr.mappedValue;
 }
 
 unsigned long lastPushed = millis();  //ボタン4チャタリング防止用
 
 // ニュートラル帯(2000..2300): 長押しはイン帯フレーム数、単押しは帯外が安定してから確定(@30Hz想定)
-static const int NEUTRAL_LONG_PRESS_FRAMES = 20;     // >20 で発火（21 フレーム ≒ 0.7s）
-static const int NEUTRAL_RELEASE_STABLE_FRAMES = 8;  // 帯外がこれ以上続けば離し確定（≒ 0.27s）
+static const int NEUTRAL_LONG_PRESS_FRAMES = 30;     
+static const int NEUTRAL_RELEASE_STABLE_FRAMES = 4;  
 static bool neutralStrokeActive = false;
 static bool neutralLongPressDone = false;
 static int neutralBandHoldFrames = 0;
 static int neutralOutsideStableFrames = 0;
 static bool neutralWasInBand = false;
+
+//pid制御
+bool pidWasInBand = false;
+static const int PID_LONG_PRESS_FRAMES = 30;
+int pidBandHoldFrames = 0;
+
 
 static void resetNeutralGesture() {
   neutralStrokeActive = false;
@@ -272,19 +263,18 @@ int TrimE_temp;
 void trimElevetor() {
   int TrimE = analogRead(trimE);
   TrimE_temp = TrimE;
-  const bool inNeutralBand = (2000 <= TrimE && TrimE <= 2300);
 
   if (0 <= TrimE && TrimE <= 100) {  //優先度1
     resetNeutralGesture();
-    Trimelevetor = Trimelevetor + 0.1;
+    Trimelevetor = constrain(Trimelevetor - 0.1,ElevatorDegMin+2,ElevatorDegMax-2);
     settingsChanged = true;
 
-  } else if (1000 <= TrimE && TrimE <= 1200) {  // 優先度2
+  } else if (665 <= TrimE && TrimE <= 1675) {  // 優先度2
     resetNeutralGesture();
-    Trimelevetor = Trimelevetor - 0.1;
+    Trimelevetor = constrain(Trimelevetor + 0.1,ElevatorDegMin+2,ElevatorDegMax-2);
     settingsChanged = true;
 
-  } else if (inNeutralBand) {
+  } else if (1675 <= TrimE && TrimE <= 2820) {
     neutralOutsideStableFrames = 0;
     if (!neutralWasInBand) {
       neutralBandHoldFrames = 1;
@@ -306,11 +296,32 @@ void trimElevetor() {
       xTaskCreate(Ltika, "Ltika", 1024, NULL, 9, NULL);
     }
 
-  } else if (3300 <= TrimE && TrimE <= 3500 && millis() - lastPushed > 250) {  //優先度4
-    resetNeutralGesture();
-    is_pid = !is_pid;
-    lastPushed = millis();
+  } else if (2820 <= TrimE && TrimE <= 3995) {  //優先度4
+
+    if(is_pid && !pidWasInBand){
+      is_pid = false;
+    }
+
+    if (!pidWasInBand) {
+      pidBandHoldFrames = 1;
+    } else {
+      pidBandHoldFrames++;
+    }
+    pidWasInBand = true;
+
+    Serial.printf("%d ",pidBandHoldFrames);
+
+    if(pidBandHoldFrames >= 10){
+      is_pid = true;
+    }
+
   } else {
+    pidWasInBand = false;
+    pidWasInBand = false;
+    pidBandHoldFrames = 0;
+
+
+
     neutralWasInBand = false;
 
     if (neutralStrokeActive) {
@@ -326,13 +337,12 @@ void trimElevetor() {
     } else {
       neutralOutsideStableFrames = 0;
     }
-
     if (settingsChanged && nvmTaskHandle != NULL) {
       xTaskNotifyGive(nvmTaskHandle);
       settingsChanged = false;
     }
   }
-  Trimelevetor = constrain(Trimelevetor,ElevatorDegMin+2,ElevatorDegMax-2);
+  
 }
 
 void trimRudder() {
@@ -340,19 +350,38 @@ void trimRudder() {
   int nowTrimR2 = digitalRead(trimR2);
 
   if (nowTrimR1 == HIGH) {
-    Trimrudder = Trimrudder + 0.1;
-    settingsChanged = true;
-  }
-  if (nowTrimR2 == HIGH) {
     Trimrudder = Trimrudder - 0.1;
     settingsChanged = true;
   }
+  if (nowTrimR2 == HIGH) {
+    Trimrudder = Trimrudder + 0.1;
+    settingsChanged = true;
+  }
 
+  Trimrudder = constrain(Trimrudder,RudderDegMin+2,RudderDegMax-2);
   if (settingsChanged && nvmTaskHandle != NULL) {
     xTaskNotifyGive(nvmTaskHandle);
     settingsChanged = false;
   }
-  Trimrudder = constrain(Trimrudder,RudderDegMin+2,RudderDegMax-2);
+}
+
+void AdcId(void *pvParameters){
+  int maxEle;
+  int minEle;
+  int maxRud;
+  int minRud;
+
+  while(1){
+    rawEle = analogRead(r_elevator);
+    rawRud = analogRead(r_rudder);
+    if(maxEle < rawEle) maxEle = rawEle;
+    if(minEle > rawEle) minEle = rawEle;
+    if(maxRud < rawRud) maxRud = rawRud;
+    if(minRud > rawRud) minRud = rawRud;
+
+    int TrimE = analogRead(trimE);
+
+  }
 }
 
 float cachedTempE = 0.0;  // エレベータサーボ温度キャッシュ
@@ -393,11 +422,12 @@ void mainloop(void *pvParameters) {
     // 通信断フェイルセーフ: 300ms pitch を受信していなければ PID を使わない
     bool pitchLinkOk = (millis() - g_lastPitchRecvMs < PITCH_LINK_TIMEOUT_MS);
 
-    if (is_pid && pitchLinkOk) {
+    if (is_pid ) {
       digitalWrite(LED, HIGH);
       if (is_center) {
         krsE = ele2krs(tempDegE + Trimelevetor);
       } else {
+        is_pid = 0;
         pidReset(&pidElevator);
       }
     } else {
