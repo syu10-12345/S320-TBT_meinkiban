@@ -345,9 +345,13 @@ void trimElevetor() {
   
 }
 
-void trimRudder() {
+bool trimRudder() {
   int nowTrimR1 = digitalRead(trimR1);
   int nowTrimR2 = digitalRead(trimR2);
+  
+  if(nowTrimR1 == HIGH || nowTrimR2 == HIGH){
+    return true;
+  }
 
   if (nowTrimR1 == HIGH) {
     Trimrudder = Trimrudder - 0.1;
@@ -363,13 +367,14 @@ void trimRudder() {
     xTaskNotifyGive(nvmTaskHandle);
     settingsChanged = false;
   }
+  return false;
 }
 
-void AdcId(void *pvParameters){
-  int maxEle;
-  int minEle;
-  int maxRud;
-  int minRud;
+void AdcId(){
+  int maxEle = analogRead(r_elevator);
+  int minEle = analogRead(r_elevator);
+  int maxRud = analogRead(r_rudder);
+  int minRud = analogRead(r_rudder);
 
   while(1){
     rawEle = analogRead(r_elevator);
@@ -379,9 +384,21 @@ void AdcId(void *pvParameters){
     if(maxRud < rawRud) maxRud = rawRud;
     if(minRud > rawRud) minRud = rawRud;
 
-    int TrimE = analogRead(trimE);
-
+    if(0 <= TrimE && TrimE <= 100){
+      break;
+    }
   }
+  float alphaEle = 0.20;
+  elergs[0] = minEle;
+  elergs[3] = maxEle;
+  elergs[2] = ((maxEle - minEle)*alphaEle + minEle + maxEle)/2;
+  elergs[1] = ((maxEle - minEle)*alphaEle - minEle - maxEle)/2;
+
+  float alphaRud = 0.2;
+  rudrgs[0] = minRud;
+  rudrgs[3] = maxRud;
+  rudrgs[2] = ((maxRud - minRud)*alphaRud + maxRud + minRud)/2;
+  rudrgs[1] = ((maxRud - minRud)*alphaRud - maxRud - minRud)/2;
 }
 
 float cachedTempE = 0.0;  // エレベータサーボ温度キャッシュ
@@ -394,9 +411,14 @@ void mainloop(void *pvParameters) {
   TickType_t xLastWakeTime = xTaskGetTickCount();
   while (1) {
 
+
     Potentiometer();
     trimElevetor();
-    trimRudder();
+    bool presd = trimRudder();
+
+    if(presd && 1675 <= TrimE && TrimE <= 2820){
+      AdcId();
+    }
 
     float degE = elevetor + Trimelevetor;
     float degR = rudder + Trimrudder;
