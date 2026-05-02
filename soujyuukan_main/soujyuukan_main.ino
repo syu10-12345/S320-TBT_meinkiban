@@ -150,14 +150,28 @@ double pidCompute(PidState *state, double error, double gyroRate, double dt) {
   return output;
 }
 
+int elergs[4] = { 1120, 1500, 2000, 2580 };  // エレベーター: 前限界, 前戻り, 後戻り, 後限界
+int rudrgs[4] = { 450, 650, 730, 1430 }; //操縦桿main
+//int rudrgs[4] = {1724,2310,2610,3220}; //操縦桿sub
+
 // 設定を読み込む関数
 void loadSettings() {
   preferences.begin("trim-data", true);
   Trimelevetor = preferences.getFloat("trimE", 0.0);
   neutralTrimeEle = preferences.getFloat("neutE", 0.0);
   Trimrudder = preferences.getFloat("trimR", 0.0);
+  for (int i = 0; i < 4; i++) {
+    char k[8];
+    snprintf(k, sizeof(k), "ele%d", i);
+    elergs[i] = preferences.getInt(k, elergs[i]);
+    snprintf(k, sizeof(k), "rud%d", i);
+    rudrgs[i] = preferences.getInt(k, rudrgs[i]);
+  }
   preferences.end();
   Serial.printf("Settings Loaded: E=%.2f, neutE=%.2f, R=%.2f\n", Trimelevetor, neutralTrimeEle, Trimrudder);
+  Serial.printf("elergs={%d,%d,%d,%d} rudrgs={%d,%d,%d,%d}\n",
+                elergs[0], elergs[1], elergs[2], elergs[3],
+                rudrgs[0], rudrgs[1], rudrgs[2], rudrgs[3]);
 }
 
 // 非同期でFlashに保存するタスク
@@ -170,6 +184,13 @@ void nvmTask(void *pvParameters) {
     preferences.putFloat("trimE", Trimelevetor);
     preferences.putFloat("neutE", neutralTrimeEle);
     preferences.putFloat("trimR", Trimrudder);
+    for (int i = 0; i < 4; i++) {
+      char k[8];
+      snprintf(k, sizeof(k), "ele%d", i);
+      preferences.putInt(k, elergs[i]);
+      snprintf(k, sizeof(k), "rud%d", i);
+      preferences.putInt(k, rudrgs[i]);
+    }
     preferences.end();
     Serial.println(">> Settings saved to NVM");
   }
@@ -184,6 +205,15 @@ void Ltika(void *pvParameters) {
   }
   vTaskDelete(NULL);
 }
+void Ltika2(void *pvParameters) {
+  while (1) {
+    digitalWrite(LED, HIGH);
+    vTaskDelay(300 / portTICK_PERIOD_MS);
+    digitalWrite(LED, LOW);
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+  }
+}
+
 
 // floatのmap関数
 float fmap(float x, float in_min, float in_max, float out_min, float out_max) {
@@ -215,11 +245,6 @@ int rawEle = 0;
 int rawRud = 0;
 int ELE;
 int RUD;
-
-int elergs[4] = { 1120, 1500, 2000, 2580 };  // エレベーター: 前限界, 前戻り, 後戻り, 後限界
-int rudrgs[4] = { 450, 650, 730, 1430 }; //操縦桿main
-//int rudrgs[4] = {1724,2310,2610,3220}; //操縦桿sub
-
 
 int is_center = 0;
 void Potentiometer() {
@@ -274,7 +299,7 @@ void trimElevetor() {
     Trimelevetor = constrain(Trimelevetor + 0.1,ElevatorDegMin+2,ElevatorDegMax-2);
     settingsChanged = true;
 
-  } else if (1675 <= TrimE && TrimE <= 2820) {
+  } else if (1675 <= TrimE && TrimE <= 2820) {// 優先度3
     neutralOutsideStableFrames = 0;
     if (!neutralWasInBand) {
       neutralBandHoldFrames = 1;
@@ -349,7 +374,7 @@ bool trimRudder() {
   int nowTrimR1 = digitalRead(trimR1);
   int nowTrimR2 = digitalRead(trimR2);
   
-  if(nowTrimR1 == HIGH || nowTrimR2 == HIGH){
+  if(nowTrimR1 == HIGH && nowTrimR2 == HIGH){
     return true;
   }
 
@@ -371,10 +396,25 @@ bool trimRudder() {
 }
 
 void AdcId(){
+  // min/max は入室直後から連続スキャンで自動更新
   int maxEle = analogRead(r_elevator);
-  int minEle = analogRead(r_elevator);
+  int minEle = maxEle;
   int maxRud = analogRead(r_rudder);
-  int minRud = analogRead(r_rudder);
+  int minRud = maxRud;
+
+  // 優先度1/2の押下スナップショット (各2個まで)
+  int eleSnap[2] = { 0, 0 };
+  int rudSnap[2] = { 0, 0 };
+  int eleCount = 0;
+  int rudCount = 0;
+  bool prio1Prev = false;  // 立ち上がりエッジ検出用
+  bool prio2Prev = false;
+
+  TaskHandle_t ltikaHandle = NULL;
+  xTaskCreate(Ltika2, "Ltika2", 1024, NULL, 9, &ltikaHandle);
+
+  const TickType_t xFrequency = (1000 / 30) / portTICK_PERIOD_MS;
+  TickType_t xLastWakeTime = xTaskGetTickCount();
 
   while(1){
     rawEle = analogRead(r_elevator);
@@ -384,21 +424,51 @@ void AdcId(){
     if(maxRud < rawRud) maxRud = rawRud;
     if(minRud > rawRud) minRud = rawRud;
 
-    if(0 <= TrimE && TrimE <= 100){
+    int trimEVal = analogRead(trimE);
+    bool prio1Now = (0    <= trimEVal && trimEVal <= 100);   // ELE保存
+    bool prio2Now = (665  <= trimEVal && trimEVal <= 1675);  // RUD保存
+    bool prio4Now = (2820 <= trimEVal && trimEVal <= 3995);  // 脱出
+
+    // 立ち上がりエッジでスナップショット保存。3回目以降は無視
+    if(prio1Now && !prio1Prev && eleCount < 2){
+      eleSnap[eleCount++] = rawEle;
+    }
+    if(prio2Now && !prio2Prev && rudCount < 2){
+      rudSnap[rudCount++] = rawRud;
+    }
+    prio1Prev = prio1Now;
+    prio2Prev = prio2Now;
+
+    Serial.printf("ADCID ele[%d/2]=%d,%d rud[%d/2]=%d,%d minE%d maxE%d minR%d maxR%d rawE%d rawR%d\n",
+                  eleCount, eleSnap[0], eleSnap[1],
+                  rudCount, rudSnap[0], rudSnap[1],
+                  minEle, maxEle, minRud, maxRud, rawEle, rawRud);
+
+    // 脱出: 優先度4 押下 かつ ELE/RUD ともに2個保存済み
+    if(prio4Now && eleCount == 2 && rudCount == 2){
       break;
     }
+    vTaskDelayUntil(&xLastWakeTime, xFrequency);
   }
-  float alphaEle = 0.20;
+
+  // 大小判別して格納: 小=前戻り(elergs[1]) / 大=後戻り(elergs[2])
   elergs[0] = minEle;
   elergs[3] = maxEle;
-  elergs[2] = ((maxEle - minEle)*alphaEle + minEle + maxEle)/2;
-  elergs[1] = ((maxEle - minEle)*alphaEle - minEle - maxEle)/2;
+  elergs[1] = (eleSnap[0] < eleSnap[1]) ? eleSnap[0] : eleSnap[1];
+  elergs[2] = (eleSnap[0] < eleSnap[1]) ? eleSnap[1] : eleSnap[0];
 
-  float alphaRud = 0.2;
   rudrgs[0] = minRud;
   rudrgs[3] = maxRud;
-  rudrgs[2] = ((maxRud - minRud)*alphaRud + maxRud + minRud)/2;
-  rudrgs[1] = ((maxRud - minRud)*alphaRud - maxRud - minRud)/2;
+  rudrgs[1] = (rudSnap[0] < rudSnap[1]) ? rudSnap[0] : rudSnap[1];
+  rudrgs[2] = (rudSnap[0] < rudSnap[1]) ? rudSnap[1] : rudSnap[0];
+
+  // NVMへ非同期保存
+  if(nvmTaskHandle != NULL){
+    xTaskNotifyGive(nvmTaskHandle);
+  }
+
+  vTaskDelete(ltikaHandle);
+  ltikaHandle = NULL;
 }
 
 float cachedTempE = 0.0;  // エレベータサーボ温度キャッシュ
@@ -416,7 +486,7 @@ void mainloop(void *pvParameters) {
     trimElevetor();
     bool presd = trimRudder();
 
-    if(presd && 1675 <= TrimE && TrimE <= 2820){
+    if(presd && 1675 <= TrimE_temp && TrimE_temp <= 2820){
       AdcId();
     }
 
@@ -444,7 +514,7 @@ void mainloop(void *pvParameters) {
     // 通信断フェイルセーフ: 300ms pitch を受信していなければ PID を使わない
     bool pitchLinkOk = (millis() - g_lastPitchRecvMs < PITCH_LINK_TIMEOUT_MS);
 
-    if (is_pid ) {
+    if (is_pid && pitchLinkOk) {
       digitalWrite(LED, HIGH);
       if (is_center) {
         krsE = ele2krs(tempDegE + Trimelevetor);
@@ -487,6 +557,8 @@ void mainloop(void *pvParameters) {
     nv.is_assisted = (is_pid && pitchLinkOk && is_center);
 
     esp_now_send(BROADCAST_MAC, (uint8_t *)&nv, sizeof(nv));
+
+    Serial.printf("%d %d %d %d ::",rudrgs[0],rudrgs[1],rudrgs[2] ,rudrgs[3]);
 
     Serial.printf("E:%.1f R:%.1f krs:%d,%d raw:%d,%d getPos:%d,%d pitch:%.1f pid:%.1f temp:%d\n", degE, degR, krsE, krsR, rawEle, rawRud, getpos0, getpos1, currentPitch, tempDegE,TrimE_temp);
 
