@@ -299,22 +299,42 @@ void loop() {
   // タクトスイッチによるキャリブレーション（500ms長押し検知）
   // GPIO35はプルダウン構成：未押下=LOW、押下=HIGH
   {
-    static unsigned long highStartTime = 0;
-    static bool wasTriggered = false;
+  static unsigned long highStartTime = 0;
+    static bool actionDone = false; // 「すでにどちらかの処理を実行したか」のフラグ
+
     if (tktsw == HIGH) {
-      if (highStartTime == 0)
+      // ボタンを押した瞬間に時間を記録し、フラグをリセット
+      if (highStartTime == 0) {
         highStartTime = millis();
-      if (!wasTriggered && millis() - highStartTime > 500) {
-        ref_alt = alt;
-        Alt_offset = raw_Altitude;
-        instrumentPanel.getRef_alt(ref_alt);
-        instrumentPanel.getAlt_offset(Alt_offset);
-        wasTriggered = true;
-        instrumentPanel.calibrate();
+        actionDone = false; 
       }
-    } else {
-      highStartTime = 0;
-      wasTriggered = false;
+
+      // 押し続けている時間を計算
+      unsigned long pressDuration = millis() - highStartTime;
+
+      // 【5秒長押し】押し続けた時間が5000msに達した瞬間に実行
+      if (!actionDone && pressDuration >= 5000) {
+        instrumentPanel.magCalibrate();
+        actionDone = true; // 処理済みマークをつける（指を離すまで何もしない）
+      }
+      
+    } else { 
+      // tktsw == LOW （ボタンを離した瞬間）
+      if (highStartTime != 0) {
+        unsigned long pressDuration = millis() - highStartTime;
+
+        // 【0.5秒長押し】離した時点で、500ms以上かつ処理済みでなければ実行
+        if (!actionDone && pressDuration >= 500) {
+          ref_alt = alt;
+          Alt_offset = raw_Altitude;
+          instrumentPanel.getRef_alt(ref_alt);
+          instrumentPanel.getAlt_offset(Alt_offset);
+          instrumentPanel.calibrate();
+        }
+
+        // 次回の計測のために時間をリセット
+        highStartTime = 0; 
+      }
     }
   }
 
@@ -339,7 +359,7 @@ void loop() {
   pitch = pitch_rad * (180.0 / PI);
   roll = roll_rad * (180.0 / PI);
   heading = heading_rad * (180.0 / PI);
-  
+
   if (millis() - lastPrint1 >= interval) {
     tgrsw = digitalRead(tgrsw_PIN);
     readkisoku();

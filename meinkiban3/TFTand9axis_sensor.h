@@ -30,6 +30,7 @@ private:
   double pitch;
   double roll;
   double heading;
+  xyzFloat magOfs = {0.0f, 0.0f, 0.0f};
 
   typedef struct
   {
@@ -521,6 +522,9 @@ private:
       gyrOfs.x = _prefs.getFloat("gx", 0);
       gyrOfs.y = _prefs.getFloat("gy", 0);
       gyrOfs.z = _prefs.getFloat("gz", 0);
+      magOfs.x = _prefs.getFloat("mx", 0);
+      magOfs.y = _prefs.getFloat("my", 0);
+      magOfs.z = _prefs.getFloat("mz", 0);
       ref_alt = _prefs.getFloat("ref_alt", 0);
       Alt_offset = _prefs.getFloat("Alt_offset",0);
       _prefs.end();
@@ -542,6 +546,9 @@ private:
     _prefs.putFloat("gx", gyrOfs.x);
     _prefs.putFloat("gy", gyrOfs.y);
     _prefs.putFloat("gz", gyrOfs.z);
+    _prefs.putFloat("mx", magOfs.x);
+    _prefs.putFloat("my", magOfs.y);
+    _prefs.putFloat("mz", magOfs.z);
     _prefs.putFloat("ref_alt", ref_alt);
     _prefs.putFloat("Alt_offset",Alt_offset);
     _prefs.putBool("valid", true);
@@ -644,6 +651,11 @@ public:
     xyzFloat magVal;
     myIMU.getMagValues(&magVal);
 
+    // ▼▼▼ これを追加（ズレを補正する） ▼▼▼
+    magVal.x -= magOfs.x;
+    magVal.y -= magOfs.y;
+    magVal.z -= magOfs.z;
+
     double Xh = magVal.x * cos(pitchRad) + magVal.y * sin(rollRad) * sin(pitchRad) + magVal.z * cos(rollRad) * sin(pitchRad);
     double Yh = magVal.y * cos(rollRad) - magVal.z * sin(rollRad);
 
@@ -677,7 +689,7 @@ public:
   void calibrate() {
     Serial.println("Calibration started...");
     tft.fillScreen(TFT_BLACK);
-
+    loadOffsets();
     // autoOffsets()と同等の設定
     myIMU.setGyrDLPF(ICM20948_DLPF_6);
     myIMU.setGyrRange(ICM20948_GYRO_RANGE_250);
@@ -730,7 +742,7 @@ public:
     gyrOfs.x /= 1000.0f;
     gyrOfs.y /= 1000.0f;
     gyrOfs.z /= 1000.0f;
-
+  
     // Phase 4: オフセット適用
     myIMU.setAccOffsets(accOfs);
     myIMU.setGyrOffsets(gyrOfs);
@@ -740,6 +752,68 @@ public:
     saveOffsets();
 
     // 完了
+    applyIMUSettings();
+    _calibrated = true;
+    drawCalStatus("[CAL] Done!");
+    Serial.println("Calibration saved to NVS");
+    delay(500);                 // Done!を視認できるよう少し待つ
+    tft.fillScreen(TFT_BLACK);  // 通常描画に戻る前に画面クリア
+  }
+
+  void magCalibrate(){
+    Serial.println("Calibration started...");
+    tft.fillScreen(TFT_BLACK);
+
+    loadOffsets();
+    // autoOffsets()と同等の設定
+    myIMU.setGyrDLPF(ICM20948_DLPF_6);
+    myIMU.setGyrRange(ICM20948_GYRO_RANGE_250);
+    myIMU.setAccRange(ICM20948_ACC_RANGE_2G);
+    myIMU.setAccDLPF(ICM20948_DLPF_6);
+    delay(100);
+    // ▼▼▼ ここから Phase 3.5 として地磁気キャリブレーションを追加 ▼▼▼
+    drawCalStatus("[CAL] Mag: Wave in 8-shape", 0, 15);
+    float m_min_x = 30000.0f, m_max_x = -30000.0f;
+    float m_min_y = 30000.0f, m_max_y = -30000.0f;
+    float m_min_z = 30000.0f, m_max_z = -30000.0f;
+    
+    unsigned long magStart = millis();
+    int lastSec = 0;
+    
+    // 15秒間ループして最大値と最小値を探す
+    while(millis() - magStart < 15000) {
+      myIMU.readSensor();
+      xyzFloat mRaw;
+      myIMU.getMagValues(&mRaw);
+      
+      // データが取得できている場合のみ更新
+      if(mRaw.x != 0.0f || mRaw.y != 0.0f) {
+        if(mRaw.x < m_min_x) m_min_x = mRaw.x;
+        if(mRaw.x > m_max_x) m_max_x = mRaw.x;
+        if(mRaw.y < m_min_y) m_min_y = mRaw.y;
+        if(mRaw.y > m_max_y) m_max_y = mRaw.y;
+        if(mRaw.z < m_min_z) m_min_z = mRaw.z;
+        if(mRaw.z > m_max_z) m_max_z = mRaw.z;
+      }
+      
+      // 画面のカウントダウン更新
+      int sec = (millis() - magStart) / 1000;
+      if (sec != lastSec) {
+        lastSec = sec;
+        drawCalStatus("[CAL] Mag: Wave in 8-shape", sec, 15);
+      }
+      delay(10);
+    }
+    
+    // 最大値と最小値の中間をオフセットとする
+    magOfs.x = (m_max_x + m_min_x) / 2.0f;
+    magOfs.y = (m_max_y + m_min_y) / 2.0f;
+    magOfs.z = (m_max_z + m_min_z) / 2.0f;
+
+    // ▲▲▲ ここまで追加 ▲▲▲
+    drawCalStatus("[CAL] Saving NVS...");
+    saveOffsets();
+
     applyIMUSettings();
     _calibrated = true;
     drawCalStatus("[CAL] Done!");
