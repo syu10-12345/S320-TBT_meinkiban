@@ -153,6 +153,7 @@ double lat;
 double lon;
 double alt;
 float ref_alt;  // 基準となる高度(GPS)
+double gnss_alt;
 double gnss_heading;
 int fixType;
 int16_t rawPressure;
@@ -325,7 +326,7 @@ void loop() {
 
         // 【0.5秒長押し】離した時点で、500ms以上かつ処理済みでなければ実行
         if (!actionDone && pressDuration >= 500) {
-          ref_alt = alt;
+          ref_alt = gnss_alt;
           Alt_offset = raw_Altitude;
           instrumentPanel.getRef_alt(ref_alt);
           instrumentPanel.getAlt_offset(Alt_offset);
@@ -673,7 +674,7 @@ void setGPS() {
 void loopGPS() {
   lat = mygnss.get(GNSS_LATITUDE);
   lon = mygnss.get(GNSS_LONGITUDE);
-  alt = mygnss.get(GNSS_ALTITUDE) - ref_alt;
+  gnss_alt = mygnss.get(GNSS_ALTITUDE);
   gnss_heading = mygnss.get(GNSS_HEADING);
   gnd_speed = mygnss.get(GNSS_SPEED);
   year = mygnss.get(GNSS_YEAR);
@@ -683,6 +684,7 @@ void loopGPS() {
   minute = mygnss.get(GNSS_MINUTE);
   second = mygnss.get(GNSS_SECOND);
   struct tm timeinfo;
+  alt = gnss_alt - ref_alt;
   if (0 < alt && alt < Alt_limmit) {
     alt = Alt_limmit;
   } else if (alt <= 0) {
