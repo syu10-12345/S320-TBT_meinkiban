@@ -167,7 +167,7 @@ int day;
 int hour;
 int minute;
 int second;
-double slits = 8.0;
+double slits = 18.0;
 // 前部(Photo1)用の変数
 volatile int pulseCount1 = 0;
 volatile unsigned long lastTime1 = 0;

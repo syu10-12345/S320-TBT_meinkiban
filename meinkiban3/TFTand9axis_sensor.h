@@ -660,7 +660,7 @@ public:
     double Yh = magVal.y * cos(rollRad) - magVal.z * sin(rollRad);
 
     // アークタンジェントで方位角(弧度法)を計算 
-    heading = atan2(Yh, Xh)* (180.0 / PI) - 0.8;
+    heading = atan2(Yh, Xh)* (180.0 / PI) + 80;
 
     if (heading < 0) {
       heading += 360.0;    //出力を0°から360°に制限
