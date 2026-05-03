@@ -29,6 +29,7 @@ private:
 
   double pitch;
   double roll;
+  double heading;
 
   typedef struct
   {
@@ -567,6 +568,9 @@ public:
       Serial.println("ICM20948 is connected");
     }
 
+    myIMU.initMagnetometer(); 
+    myIMU.setMagOpMode(AK09916_CONT_MODE_100HZ); // 地磁気を1秒間に20回連続計測するモード
+
     if (loadOffsets()) {
       _calibrated = true;
       Serial.println("IMU offsets loaded from NVS");
@@ -611,10 +615,11 @@ public:
 
   // p, r は姿勢角 [rad]、pr, rr はジャイロ角速度 [deg/s] を返す。
   // 角度と角速度で単位系が混在しているので、呼び出し側で取り違えないこと。
-  void getPitchAndRoll(double *p, double *r, double *pr, double *rr) {
+  void getPitchAndRollAndHeading(double *p, double *r, double *h, double *pr, double *rr) {
     if (!_calibrated) {
       *p = 0.0;
       *r = 0.0;
+      *h = 0.0;
       *pr = 0.0;
       *rr = 0.0;
       return;
@@ -623,13 +628,35 @@ public:
     myIMU.readSensor();
     pitch = myIMU.getPitch();
     roll = myIMU.getRoll();
-    *p = pitch * (PI / 180.0);  // getPitch() の [deg] を [rad] に変換
-    *r = roll * (PI / 180.0);   // getRoll() の [deg] を [rad] に変換
+
+    // 計算用にラジアンに変換
+    double pitchRad = pitch * (PI / 180.0);
+    double rollRad = roll * (PI / 180.0);
+    *p = pitchRad;
+    *r = rollRad;
 
     xyzFloat gyrVal;
     myIMU.getGyrValues(&gyrVal);  // ICM20948_WE::getGyrValues() は [deg/s]
     *pr = gyrVal.y;               // ピッチ軸角速度 [deg/s]
     *rr = gyrVal.x;               // ロール軸角速度 [deg/s]
+
+    // 地磁気センサーの生データを取得
+    xyzFloat magVal;
+    myIMU.getMagValues(&magVal);
+
+    double Xh = magVal.x * cos(pitchRad) + magVal.y * sin(rollRad) * sin(pitchRad) + magVal.z * cos(rollRad) * sin(pitchRad);
+    double Yh = magVal.y * cos(rollRad) - magVal.z * sin(rollRad);
+
+    // アークタンジェントで方位角(弧度法)を計算 
+    heading = atan2(Yh, Xh)* (180.0 / PI) - 0.8;
+
+    if (heading < 0) {
+      heading += 360.0;    //出力を0°から360°に制限
+    }else if (heading >= 360.0) {
+      heading -= 360.0;
+    }
+
+    *h = heading * (PI / 180.0);
   }
 
 

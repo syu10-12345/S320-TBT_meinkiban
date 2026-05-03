@@ -148,11 +148,12 @@ int tktsw;
 volatile int tgrsw;
 double pitch_rad;
 double roll_rad;
+double heading_rad;
 double lat;
 double lon;
 double alt;
-float ref_alt;  // 基準となる高度
-double GNSS_heading;
+float ref_alt;  // 基準となる高度(GPS)
+double gnss_heading;
 int fixType;
 int16_t rawPressure;
 double AIR_DENSITY;
@@ -333,12 +334,12 @@ void loop() {
 
   static unsigned long lastPrint1 = 0;
   static unsigned long lastPrint2 = 50;
-  instrumentPanel.getPitchAndRoll(&pitch_rad, &roll_rad, &pitch_rate, &roll_rate);
-  // heading = instrumentPanel.getHeading(pitch_rad, roll_rad);
+  instrumentPanel.getPitchAndRollAndHeading(&pitch_rad, &roll_rad, &heading_rad, &pitch_rate, &roll_rate);
   instrumentPanel.updata(E_trim, air_speed, front_rpm, Altitude);
   pitch = pitch_rad * (180.0 / PI);
   roll = roll_rad * (180.0 / PI);
-
+  heading = heading_rad * (180.0 / PI);
+  
   if (millis() - lastPrint1 >= interval) {
     tgrsw = digitalRead(tgrsw_PIN);
     readkisoku();
@@ -653,7 +654,7 @@ void loopGPS() {
   lat = mygnss.get(GNSS_LATITUDE);
   lon = mygnss.get(GNSS_LONGITUDE);
   alt = mygnss.get(GNSS_ALTITUDE) - ref_alt;
-  GNSS_heading = mygnss.get(GNSS_HEADING);
+  gnss_heading = mygnss.get(GNSS_HEADING);
   gnd_speed = mygnss.get(GNSS_SPEED);
   year = mygnss.get(GNSS_YEAR);
   month = mygnss.get(GNSS_MONTH);
@@ -696,6 +697,7 @@ void sendAndoroid() {
   myAndroid.add("gnd_speed", gnd_speed);
   myAndroid.add("pitch", pitch);
   myAndroid.add("roll", roll);
+  myAndroid.add("heading",heading);
   myAndroid.add("pitch_rate", pitch_rate);
   myAndroid.add("roll_rate", roll_rate);
   myAndroid.add("front_rpm", front_rpm);
@@ -707,7 +709,7 @@ void sendAndoroid() {
   myAndroid.addLocation(lat, lon);
   myAndroid.add("altitude", Altitude);
   myAndroid.add("heading", (int)heading);
-  myAndroid.add("GNSS_heading", (int)GNSS_heading);
+  myAndroid.add("gnss_heading", (int)gnss_heading);
 
   // Accuracy logic
   if (fixType >= 3) {  // 3D or better
