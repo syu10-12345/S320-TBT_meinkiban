@@ -291,12 +291,12 @@ void trimElevetor() {
 
   if (0 <= TrimE && TrimE <= 100) {  //優先度1
     resetNeutralGesture();
-    Trimelevetor = constrain(Trimelevetor - 0.1,ElevatorDegMin+2,ElevatorDegMax-2);
+    Trimelevetor = constrain(Trimelevetor - 0.1,ElevatorDegMin,ElevatorDegMax);
     settingsChanged = true;
 
   } else if (665 <= TrimE && TrimE <= 1675) {  // 優先度2
     resetNeutralGesture();
-    Trimelevetor = constrain(Trimelevetor + 0.1,ElevatorDegMin+2,ElevatorDegMax-2);
+    Trimelevetor = constrain(Trimelevetor + 0.1,ElevatorDegMin,ElevatorDegMax);
     settingsChanged = true;
 
   } else if (1675 <= TrimE && TrimE <= 2820) {// 優先度3
@@ -439,11 +439,6 @@ void AdcId(){
     prio1Prev = prio1Now;
     prio2Prev = prio2Now;
 
-    Serial.printf("ADCID ele[%d/2]=%d,%d rud[%d/2]=%d,%d minE%d maxE%d minR%d maxR%d rawE%d rawR%d\n",
-                  eleCount, eleSnap[0], eleSnap[1],
-                  rudCount, rudSnap[0], rudSnap[1],
-                  minEle, maxEle, minRud, maxRud, rawEle, rawRud);
-
     // 脱出: 優先度4 押下 かつ ELE/RUD ともに2個保存済み
     if(prio4Now && eleCount == 2 && rudCount == 2){
       break;
@@ -501,6 +496,7 @@ void mainloop(void *pvParameters) {
     中立外は手動舵角のままモードだけ維持し、積分はリセットしてウィンドアップを防ぐ。
     */
 
+    
     int krsE = ele2krs(degE);
     int krsR = rud2krs(degR);
 
@@ -549,7 +545,7 @@ void mainloop(void *pvParameters) {
     nv.role = ROLE_SOUJYUUKAN;
     nv.E_steer = (float)rawEle;
     nv.R_steer = (float)rawRud;
-    nv.E_trim = Trimelevetor;
+    nv.E_trim = -(Trimelevetor - neutralTrimeEle);
     nv.E_angle = (getpos1 != -1) ? krs2ele((float)getpos1) : -1;
     nv.R_angle = (getpos0 != -1) ? krs2rud((float)getpos0) : -1;
     nv.e_servo_temp = cachedTempE;
@@ -558,9 +554,7 @@ void mainloop(void *pvParameters) {
 
     esp_now_send(BROADCAST_MAC, (uint8_t *)&nv, sizeof(nv));
 
-    Serial.printf("%d %d %d %d ::",rudrgs[0],rudrgs[1],rudrgs[2] ,rudrgs[3]);
-
-    Serial.printf("E:%.1f R:%.1f krs:%d,%d raw:%d,%d getPos:%d,%d pitch:%.1f pid:%.1f temp:%d\n", degE, degR, krsE, krsR, rawEle, rawRud, getpos0, getpos1, currentPitch, tempDegE,TrimE_temp);
+    Serial.printf("E:%.1f R:%.1f krs:%d,%d raw:%d,%d getPos:%d,%d pitch:%.1f pid:%.1f temp:%d\n", krs2ele((float)getpos1), krs2rud((float)getpos0), krsE, krsR, rawEle, rawRud, getpos0, getpos1, currentPitch, tempDegE,TrimE_temp);
 
     vTaskDelayUntil(&xLastWakeTime, xFrequency);
   }
