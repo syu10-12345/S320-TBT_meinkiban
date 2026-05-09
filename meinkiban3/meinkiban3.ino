@@ -298,6 +298,7 @@ void setup() {
   xTaskCreatePinnedToCore(commTask, "commTask", 4096, NULL, 1, NULL, 0);
 }
 
+int count1;
 void loop() {
   photo1 = digitalRead(PHOTO1_PIN);
   photo2 = digitalRead(PHOTO2_PIN);
@@ -368,6 +369,10 @@ void loop() {
 
   if (millis() - lastPrint1 >= interval) {
     tgrsw = digitalRead(tgrsw_PIN);
+    count1 += 1;
+    if(count1 >= 180){
+      count1 = 0;
+    }
     readkisoku();
     confirmICM();
     calcRPM();
@@ -482,31 +487,31 @@ void MCP23017_LED() {
 
   if (mcp_active) {
     // 正常に生きている時だけLEDを操作
-    if (p_rpm <= 5) {
-      mcp.digitalWrite(LED1, LOW);
-      mcp.digitalWrite(LED2, LOW);
-      mcp.digitalWrite(LED3, LOW);
-    } else if (5 < p_rpm && p_rpm <= 20) {
+    if (count1 <= 5) {
       mcp.digitalWrite(LED1, HIGH);
       mcp.digitalWrite(LED2, LOW);
       mcp.digitalWrite(LED3, LOW);
-    } else if (20 < p_rpm && p_rpm <= 60) {
+    } else if (5 < count1 && count1 <= 20) {
+      mcp.digitalWrite(LED1, HIGH);
+      mcp.digitalWrite(LED2, LOW);
+      mcp.digitalWrite(LED3, LOW);
+    } else if (20 < count1 && count1 <= 60) {
       mcp.digitalWrite(LED1, HIGH);
       mcp.digitalWrite(LED2, HIGH);
       mcp.digitalWrite(LED3, LOW);
-    } else if (60 < p_rpm && p_rpm <= 80) {
+    } else if (60 < count1 && count1 <= 80) {
       mcp.digitalWrite(LED1, LOW);
       mcp.digitalWrite(LED2, HIGH);
       mcp.digitalWrite(LED3, LOW);
-    } else if (80 < p_rpm && p_rpm <= 100) {
+    } else if (80 < count1 && count1 <= 100) {
       mcp.digitalWrite(LED1, LOW);
       mcp.digitalWrite(LED2, HIGH);
       mcp.digitalWrite(LED3, HIGH);
-    } else if (100 < p_rpm && p_rpm <= 120) {
+    } else if (100 < count1 && count1 <= 120) {
       mcp.digitalWrite(LED1, LOW);
       mcp.digitalWrite(LED2, LOW);
       mcp.digitalWrite(LED3, HIGH);
-    } else if (120 < p_rpm && p_rpm <= 140) {
+    } else if (120 < count1 && count1 <= 140) {
       mcp.digitalWrite(LED1, HIGH);
       mcp.digitalWrite(LED2, LOW);
       mcp.digitalWrite(LED3, HIGH);
