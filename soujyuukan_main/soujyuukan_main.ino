@@ -547,8 +547,8 @@ void mainloop(void *pvParameters) {
     nv.E_steer = (float)rawEle;
     nv.R_steer = (float)rawRud;
     nv.E_trim = -(Trimelevetor - neutralTrimeEle);
-    nv.E_angle = (getpos1 != -1) ? krs2ele((float)getpos1) : -1;
-    nv.R_angle = (getpos0 != -1) ? krs2rud((float)getpos0) : -1;
+    nv.E_angle = krs2ele((float)getpos1);
+    nv.R_angle = krs2rud((float)getpos0);
     nv.e_servo_temp = cachedTempE;
     nv.r_servo_temp = cachedTempR;
     nv.is_assisted = (is_pid && pitchLinkOk && is_center);

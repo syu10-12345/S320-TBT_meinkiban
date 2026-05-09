@@ -538,7 +538,7 @@ void setup() {
   Serial.print("sizeof(FullTelemetryPacket) = ");
   Serial.println(sizeof(FullTelemetryPacket));
 
-  OpenLog.begin(9600, SERIAL_8N1, RX_PIN, TX_PIN);
+  OpenLog.begin(250000, SERIAL_8N1, RX_PIN, TX_PIN);
 
   Serial.println("Waiting for OpenLog boot...");
   delay(3000);
