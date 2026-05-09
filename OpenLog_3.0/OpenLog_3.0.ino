@@ -36,6 +36,8 @@ struct FullTelemetryPacket {
   float air_speed, gnd_speed, Altitude, heading;
   double lat, lon;
   uint32_t epoch_time;
+  uint32_t ctrl_stk_t;
+  uint32_t main_bord_t;
   bool electrical_errors[12];
 };
 #pragma pack(pop)
@@ -249,7 +251,7 @@ bool readSmallFileClean(const String &name, String &out, unsigned long overall_m
 // ===============================
 String csvHeader() {
   return
-    "epoch_time,"
+    "epoch_time,ctrl_stk_t,main_bord_t,"
     "lat,lon,"
     "altitude,heading,"
     "air_speed,gnd_speed,"
@@ -265,7 +267,7 @@ String csvHeader() {
 // バッファ不足で切り詰められた場合は (size_t)-1 を返す。
 size_t packetToCsv(const FullTelemetryPacket& p, char* buf, size_t bufsize) {
   int n = snprintf(buf, bufsize,
-    "%lu,"
+    "%lu,%lu,%lu,"
     "%.7f,%.7f,"
     "%.3f,%.3f,"
     "%.3f,%.3f,"
@@ -275,7 +277,7 @@ size_t packetToCsv(const FullTelemetryPacket& p, char* buf, size_t bufsize) {
     "%.3f,%.3f,%.3f,%.3f,%.3f,"
     "%.3f,%.3f,%d,"
     "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
-    (unsigned long)p.epoch_time,
+    (unsigned long)p.epoch_time,(unsigned long)p.ctrl_stk_t,(unsigned long)p.main_bord_t,
     p.lat, p.lon,
     p.Altitude, p.heading,
     p.air_speed, p.gnd_speed,

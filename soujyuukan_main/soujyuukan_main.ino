@@ -44,6 +44,7 @@ struct ControlData {
   float E_trim, E_angle, R_angle;
   float e_servo_temp, r_servo_temp;
   bool is_assisted;
+  uint32_t ctrl_stk_t;
 };
 struct NavigationData {
   uint32_t magic;
@@ -551,6 +552,7 @@ void mainloop(void *pvParameters) {
     nv.e_servo_temp = cachedTempE;
     nv.r_servo_temp = cachedTempR;
     nv.is_assisted = (is_pid && pitchLinkOk && is_center);
+    nv.ctrl_stk_t = millis();
 
     esp_now_send(BROADCAST_MAC, (uint8_t *)&nv, sizeof(nv));
 

@@ -45,6 +45,7 @@ volatile double R_angle = 0;
 volatile double e_servo_temp = 0.0;
 volatile double r_servo_temp = 0.0;
 volatile bool is_assisted = false;
+volatile uint32_t ctrl_stk_t = 0;
 volatile String electrical_errors = "[]";
 
 static const uint8_t WIFI_CHANNEL = 1;
@@ -64,6 +65,7 @@ struct ControlData  // 操縦用 C3 から meinkiban3 に送られてくるデ�
   float E_trim, E_angle, R_angle;
   float e_servo_temp, r_servo_temp;
   bool is_assisted;
+  uint32_t ctrl_stk_t;
 };
 struct NavigationData  // meinkiban3 から操縦用 C3 に送る、主にジャイロ関連のデータ
 {
@@ -87,6 +89,8 @@ struct FullTelemetryPacket {
   float air_speed, gnd_speed, Altitude, heading;
   double lat, lon;
   uint32_t epoch_time;
+  uint32_t ctrl_stk_t;
+  uint32_t main_bord_t;
   bool electrical_errors[12];
 };
 #pragma pack(pop)
@@ -116,6 +120,7 @@ void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
   e_servo_temp = pkt.e_servo_temp;
   r_servo_temp = pkt.r_servo_temp;
   is_assisted = pkt.is_assisted;
+  ctrl_stk_t = pkt.ctrl_stk_t;
   g_lastRecvFromSoujyuukanMs = millis();
 }
 
@@ -436,6 +441,8 @@ void sendLogger() {
   packet.e_servo_temp = (float)e_servo_temp;
   packet.r_servo_temp = (float)r_servo_temp;
   packet.is_assisted = is_assisted;
+  packet.ctrl_stk_t = ctrl_stk_t;
+  packet.main_bord_t = millis();
 
   packet.electrical_errors[0] = gps_active;
   packet.electrical_errors[1] = mcp_active;
