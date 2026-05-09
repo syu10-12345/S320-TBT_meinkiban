@@ -511,6 +511,8 @@ void mainloop(void *pvParameters) {
     // 通信断フェイルセーフ: 300ms pitch を受信していなければ PID を使わない
     bool pitchLinkOk = (millis() - g_lastPitchRecvMs < PITCH_LINK_TIMEOUT_MS);
 
+    is_pid = 0;//3rdTF
+    
     if (is_pid && pitchLinkOk) {
       digitalWrite(LED, HIGH);
       if (is_center) {
