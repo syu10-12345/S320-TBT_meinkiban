@@ -332,11 +332,10 @@ void loop() {
 
         // 【0.5秒長押し】離した時点で、500ms以上かつ処理済みでなければ実行
         if (!actionDone && pressDuration >= 500) {
+          instrumentPanel.calibrate();
           ref_alt = gnss_alt;
           Alt_offset = raw_Altitude;
-          instrumentPanel.getRef_alt(ref_alt);
-          instrumentPanel.getAlt_offset(Alt_offset);
-          instrumentPanel.calibrate();
+          instrumentPanel.saveAltOffsets(ref_alt, Alt_offset);
         }
 
         // 次回の計測のために時間をリセット

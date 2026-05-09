@@ -822,6 +822,14 @@ public:
     tft.fillScreen(TFT_BLACK);  // 通常描画に戻る前に画面クリア
   }
 
+  void saveAltOffsets(double a1t, double Altitude) {
+    ref_alt = (float)a1t;
+    Alt_offset = (float)Altitude;
+    
+    // 他の設定値（RAMに保持されているIMUのオフセット等）と一緒にNVSに書き込む
+    saveOffsets(); 
+  }
+
   bool isCalibrated() {
     return _calibrated;
   }
