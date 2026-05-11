@@ -558,7 +558,7 @@ void mainloop(void *pvParameters) {
 
     esp_now_send(BROADCAST_MAC, (uint8_t *)&nv, sizeof(nv));
 
-    Serial.printf("E:%.1f R:%.1f krs:%d,%d raw:%d,%d getPos:%d,%d pitch:%.1f pid:%.1f temp:%d\n", krs2ele((float)getpos1), krs2rud((float)getpos0), krsE, krsR, rawEle, rawRud, getpos0, getpos1, currentPitch, tempDegE,TrimE_temp);
+    Serial.printf("E:%.1f R:%.1f krs:%d,%d setPos:%d,%d raw:%d,%d getPos:%d,%d pitch:%.1f pid:%.1f temp:%d\n", krs2ele((float)getpos1), krs2rud((float)getpos0), krsE, krsR, setpos0, setpos1, rawEle, rawRud, getpos0, getpos1, currentPitch, tempDegE,TrimE_temp);
 
     vTaskDelayUntil(&xLastWakeTime, xFrequency);
   }
