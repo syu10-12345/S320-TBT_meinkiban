@@ -41,7 +41,7 @@ struct ControlData {
   uint32_t magic;
   uint8_t role;
   float E_steer, R_steer;
-  float E_trim, E_angle, R_angle;
+  float E_trim,E_angle, R_angle;
   float e_servo_temp, r_servo_temp;
   bool is_assisted;
   uint32_t ctrl_stk_t;
@@ -111,7 +111,6 @@ IcsHardSerialClass krs(&Serial0, EN_PIN, BAUDRATE, TIMEOUT);  //インスタン�
 float Trimelevetor = 0.0;
 float neutralTrimeEle = 0.0;
 float Trimrudder = 0.0;
-float neutral
 
 
 bool is_pid = 0;  //今PID制御をONにするかどうか(0か1)
@@ -547,8 +546,8 @@ void mainloop(void *pvParameters) {
     ControlData nv;
     nv.magic = MAGIC;
     nv.role = ROLE_SOUJYUUKAN;
-    nv.E_steer = fmap(rawEle,elergs[0],elergs[3],ElevatorDegMin,ElevatorDegMax);
-    nv.R_steer = fmap(rawRud,rudrgs[0],rudrgs[3],RudderDegMin,RudderDegMax);
+    nv.E_steer = fmap(rawEle,elergs[0],elergs[3],-30,30);
+    nv.R_steer = fmap(rawRud,rudrgs[0],rudrgs[3],-30,30);
     nv.E_trim = -(Trimelevetor - neutralTrimeEle);
     nv.E_angle = krs2ele((float)getpos1);
     nv.R_angle = krs2rud((float)getpos0);
