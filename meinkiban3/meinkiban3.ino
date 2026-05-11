@@ -55,6 +55,10 @@ static uint8_t BROADCAST_MAC[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 static volatile uint32_t g_lastRecvFromSoujyuukanMs = 0;
 static const uint32_t LINK_TIMEOUT_MS = 500;
 
+// I2C0 (Wire) は commTask(Core0) が独占する。キャリブ中は loop()(Core1) が
+// IMU を長時間占有するので、commTask 側の I2C0 アクセスを一時停止する。
+static volatile bool g_calibrating = false;
+
 // ==========================================
 #pragma pack(push, 1)
 struct ControlData  // 操縦用 C3 から meinkiban3 に送られてくるデータ
@@ -248,6 +252,8 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(PHOTO1_PIN), isrPhoto1, FALLING);
   attachInterrupt(digitalPinToInterrupt(PHOTO2_PIN), isrPhoto2, FALLING);
 
+  
+
   instrumentPanel.begin();
 
   ref_alt = instrumentPanel.returnRef_alt();
@@ -321,7 +327,10 @@ void loop() {
 
       // 【5秒長押し】押し続けた時間が5000msに達した瞬間に実行
       if (!actionDone && pressDuration >= 5000) {
+        g_calibrating = true;
+        delay(25); // commTask が現在の Wire アクセスを完了するのを待つ (周期20ms)
         instrumentPanel.magCalibrate();
+        g_calibrating = false;
         actionDone = true; // 処理済みマークをつける（指を離すまで何もしない）
       }
       
@@ -332,7 +341,10 @@ void loop() {
 
         // 【0.5秒長押し】離した時点で、500ms以上かつ処理済みでなければ実行
         if (!actionDone && pressDuration >= 500) {
+          g_calibrating = true;
+          delay(25);
           instrumentPanel.calibrate();
+          g_calibrating = false;
           ref_alt = gnss_alt;
           Alt_offset = raw_Altitude;
           instrumentPanel.saveAltOffsets(ref_alt, Alt_offset);
@@ -344,27 +356,13 @@ void loop() {
     }
   }
 
-  if (millis() - lastUltraTime >= interval) {
-    if (ultra_active) {
-      readAltimeter();  // 前回スタートに成功していれば、値を読み取る
-      if (Altitude < 0) {
-        Altitude = 0;
-      }
-    } else {
-      Altitude = alt;
-    }
-
-    startAltimeter();          // 失敗していても、必ず次の測定開始合図を送って再挑戦する
-    lastUltraTime = millis();  // タイマーをリセット
-  }
+  // 超音波 / IMU 読み / confirmICM は commTask(Core0) に移動済。
+  // loop() は TFT 描画と Wire1 系 (SDP810, MCP23017) のみ担当する。
 
   static unsigned long lastPrint1 = 0;
   static unsigned long lastPrint2 = 50;
-  instrumentPanel.getPitchAndRollAndHeading(&pitch_rad, &roll_rad, &heading_rad, &pitch_rate, &roll_rate);
+
   instrumentPanel.updata(E_trim, air_speed, front_rpm, Altitude);
-  pitch = pitch_rad * (180.0 / PI);
-  roll = roll_rad * (180.0 / PI);
-  heading = heading_rad * (180.0 / PI);
 
   if (millis() - lastPrint1 >= interval) {
     tgrsw = digitalRead(tgrsw_PIN);
@@ -373,7 +371,6 @@ void loop() {
       count1 = 0;
     }
     readkisoku();
-    confirmICM();
     calcRPM();
 
     MCP23017_LED();
@@ -394,7 +391,38 @@ void loop() {
 void commTask(void *pvParameters) {
   const TickType_t xFrequency = 20 / portTICK_PERIOD_MS;
   TickType_t xLastWakeTime = xTaskGetTickCount();
+  unsigned long lastConfirmIcmMs = 0;
   while (1) {
+    // I2C0 (Wire) アクセスは commTask に集約。キャリブ中は loop() が IMU を
+    // 占有するので、競合を避けるため Wire アクセスを丸ごとスキップする。
+    if (!g_calibrating) {
+      // IMU 50Hz サンプリング (PID D項用 pitch_rate を含む)
+      instrumentPanel.getPitchAndRollAndHeading(&pitch_rad, &roll_rad, &heading_rad, &pitch_rate, &roll_rate);
+      pitch = pitch_rad * (180.0 / PI);
+      roll = roll_rad * (180.0 / PI);
+      heading = heading_rad * (180.0 / PI);
+
+      // 超音波 MB1242 (interval = 100ms)
+      if (millis() - lastUltraTime >= interval) {
+        if (ultra_active) {
+          readAltimeter();
+          if (Altitude < 0) {
+            Altitude = 0;
+          }
+        } else {
+          Altitude = alt;
+        }
+        startAltimeter();          // 失敗していても次の測定開始合図を送って再挑戦
+        lastUltraTime = millis();
+      }
+
+      // IMU 生存 ping (100ms 間隔)
+      if (millis() - lastConfirmIcmMs >= 100) {
+        confirmICM();
+        lastConfirmIcmMs = millis();
+      }
+    }
+
     sendCtrlStick();
     if (tgrsw == HIGH) {
       sendLogger();
