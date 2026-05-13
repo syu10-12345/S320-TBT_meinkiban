@@ -36,7 +36,77 @@ TFTand9axis_sensor instrumentPanel;
 #define LED2 0
 #define LED3 1
 
-// --- Web Controlled Data (Global Variables) ---
+/* ======================= グローバル変数 ========================================================== */
+//loop()内の時間を管理する変数
+unsigned long previousMillis = 0;  // 前回の更新時間を保存
+const long interval = 100;         // 更新間隔（ミリ秒）
+int count1;     //LEDを光らせるときに使用するカウント変数
+//姿勢角計
+double pitch = 0.0;
+double pitch_rate = 0.0;  // ジャイロ ピッチレート [°/s]
+double roll_rate = 0.0;   // ジャイロ ロールレート [°/s]
+double roll = 0.0;
+double heading = 0.0;
+double pitch_rad;
+double roll_rad;
+double heading_rad;
+//高度計
+double raw_Altitude = 0.0;
+double Altitude = 0.0;
+double Alt_offset = 0.0;
+double Alt_limmit = 7.65 - 0.05; //7.65が高度計MB1242の測定限界、たまに高度計に近づきすぎたりすると7.65になってしまいしっかりと測定できていない場合があるため-0.05
+unsigned long lastUltraTime = 0;  // 最後に計測した時間を記録する変数
+//ピトー管
+double air_speed = 0.0;
+double gnd_speed = 0.0;
+int16_t rawPressure;
+double AIR_DENSITY;
+//スイッチが押されているかどうか判別する変数
+int tktsw;
+volatile int tgrsw;
+/*===========GNSS関連の変数==========================================*/
+//機体の位置を取得するための変数
+double lat;
+double lon;
+double alt;          //gnnss_alt - ref_altを表わす変数で地面からどのくらいの距離かを表す変数
+double ref_alt;      // 基準となる高度(GPS)
+double gnss_alt;     //GNSSで取得した高度データ
+double gnss_heading; //機体が進んでいる方向を表す変数
+int fixType;
+//時間を取得するための変数
+uint32_t epoch_time;
+int year;
+int month;
+int day;
+int hour;
+int minute;
+int second;
+
+/*=============回転数計系統の変数名====================*/
+double slits = 18.0;
+// 前部(Photo1)用の変数
+volatile int pulseCount1 = 0;
+volatile unsigned long lastTime1 = 0;
+volatile unsigned long interval1 = 0;
+// 後部(Photo2)用の変数
+volatile int pulseCount2 = 0;
+volatile unsigned long lastTime2 = 0;
+volatile unsigned long interval2 = 0;
+//回転数rpm
+double p_rpm;
+double avg_rpm;
+double front_rpm = 0.0;
+double rear_rpm = 0.0;
+
+/*==========エラーを管理するbool型の変数=================================*/
+bool mcp_active = false;  // MCPが正しく認識されたか管理するフラグ
+bool ultra_active = false;
+bool gps_active = false;
+bool sdp_active = false;
+bool imu_active = false;
+bool CtrlStickCommunication_active = false;
+
+/*========================操縦桿系統の変数====================================*/
 volatile double E_steer = 0;
 volatile double R_steer = 0;
 volatile double E_trim = 0;
@@ -47,19 +117,28 @@ volatile double r_servo_temp = 0.0;
 volatile bool is_assisted = false;
 volatile uint32_t ctrl_stk_t = 0;
 volatile String electrical_errors = "[]";
+/*-------------------------------------------------------------------*/
+/* ===== 関数プロトタイプ ===== */
+void clearI2CBus(int sdaPin, int sclPin);
+void readSiseikaku();
+void startAltimeter();
+void readAltimeter();
+bool startMeasurement();
+void setGPS();
+void loopGPS();
+void readkisoku();
+void MCP23017_LED();
+void sendAndoroid();
+void confirmICM();
+void IRAM_ATTR isrPhoto1();
+void IRAM_ATTR isrPhoto2();
+void calcRPM();
+void sendCtrlStick();
+void sendLogger();
+void commTask(void *pvParameters);]
+/*----------------------------------------------------------------------*/
 
-static const uint8_t WIFI_CHANNEL = 1;
-static uint8_t BROADCAST_MAC[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
-
-// ESP-NOW はコネクションレスなので、最終受信時刻で疎通を判定する
-static volatile uint32_t g_lastRecvFromSoujyuukanMs = 0;
-static const uint32_t LINK_TIMEOUT_MS = 500;
-
-// I2C0 (Wire) は commTask(Core0) が独占する。キャリブ中は loop()(Core1) が
-// IMU を長時間占有するので、commTask 側の I2C0 アクセスを一時停止する。
-static volatile bool g_calibrating = false;
-
-// ==========================================
+/* =========================通信で使用する構造体============================================================*/
 #pragma pack(push, 1)
 struct ControlData  // 操縦用 C3 から meinkiban3 に送られてくるデータ
 {
@@ -78,7 +157,7 @@ struct NavigationData  // meinkiban3 から操縦用 C3 に送る、主にジャ
   float pitch;
   float pitch_rate;  // ジャイロ Y軸 [°/s] — PID の D項に使用
 };
-struct FullTelemetryPacket {
+struct FullTelemetryPacket {  //メイン基板からロガー C3に送る
   uint32_t magic;
   uint8_t role;
   float E_steer, R_steer;
@@ -97,6 +176,18 @@ struct FullTelemetryPacket {
   uint32_t main_bord_t;
   bool electrical_errors[12];
 };
+/*========================================================================================================================================*/
+static const uint8_t WIFI_CHANNEL = 1;
+static uint8_t BROADCAST_MAC[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+
+// ESP-NOW はコネクションレスなので、最終受信時刻で疎通を判定する
+static volatile uint32_t g_lastRecvFromSoujyuukanMs = 0;
+static const uint32_t LINK_TIMEOUT_MS = 500;
+
+// I2C0 (Wire) は commTask(Core0) が独占する。キャリブ中は loop()(Core1) が
+// IMU を長時間占有するので、commTask 側の I2C0 アクセスを一時停止する。
+static volatile bool g_calibrating = false;
+
 #pragma pack(pop)
 #define MAGIC 0x53333230u
 #define ROLE_MEINKIBAN3 1
@@ -135,89 +226,9 @@ void onSent(const wifi_tx_info_t *tx_info, esp_now_send_status_t status) {
   // 成功時は静かにする (毎回ログると邪魔)
 }
 
-/* ===== グローバル変数 ===== */
-unsigned long previousMillis = 0;  // 前回の更新時間を保存
-const long interval = 100;         // 更新間隔（ミリ秒）
-double pitch = 0.0;
-double pitch_rate = 0.0;  // ジャイロ ピッチレート [°/s]
-double roll_rate = 0.0;   // ジャイロ ロールレート [°/s]
-double roll = 0.0;
-double heading = 0.0;
-double raw_Altitude = 0.0;
-double Altitude = 0.0;
-double Alt_offset = 0.0;
-double Alt_limmit = 7.65 - 0.05; //7.65が高度計MB1242の測定限界、たまに高度計に近づきすぎたりすると7.65になってしまいしっかりと測定できていない場合があるため-0.05
-double air_speed = 0.0;
-double gnd_speed = 0.0;
-double front_rpm = 0.0;
-double rear_rpm = 0.0;
-int photo1;
-int photo2;
-int tktsw;
-volatile int tgrsw;
-double pitch_rad;
-double roll_rad;
-double heading_rad;
-double lat;
-double lon;
-double alt;
-float ref_alt;  // 基準となる高度(GPS)
-double gnss_alt;
-double gnss_heading;
-int fixType;
-int16_t rawPressure;
-double AIR_DENSITY;
-unsigned long lastUltraTime = 0;  // 最後に計測した時間を記録する変数
-TaskHandle_t displayTaskHandle;   // タスクを管理するためのハンドル
-uint32_t epoch_time;
-int year;
-int month;
-int day;
-int hour;
-int minute;
-int second;
-double slits = 18.0;
-// 前部(Photo1)用の変数
-volatile int pulseCount1 = 0;
-volatile unsigned long lastTime1 = 0;
-volatile unsigned long interval1 = 0;
-
-// 後部(Photo2)用の変数
-volatile int pulseCount2 = 0;
-volatile unsigned long lastTime2 = 0;
-volatile unsigned long interval2 = 0;
-
-double p_rpm;
-double avg_rpm;
-
 // --- Custom Library Instances ---
 TBT_GNSS mygnss;
 TBT_AndroidSerial myAndroid;
-
-/* ===== 関数プロトタイプ ===== */
-void clearI2CBus(int sdaPin, int sclPin);
-void readSiseikaku();
-void startAltimeter();
-void readAltimeter();
-bool startMeasurement();
-void setGPS();
-void loopGPS();
-void readkisoku();
-void MCP23017_LED();
-void sendAndoroid();
-void confirmICM();
-void IRAM_ATTR isrPhoto1();
-void IRAM_ATTR isrPhoto2();
-void calcRPM();
-void sendCtrlStick();
-void sendLogger();
-void commTask(void *pvParameters);
-bool mcp_active = false;  // MCPが正しく認識されたか管理するフラグ
-bool ultra_active = false;
-bool gps_active = false;
-bool sdp_active = false;
-bool imu_active = false;
-bool CtrlStickCommunication_active = false;
 
 void setup() {
   delay(500);
@@ -252,8 +263,6 @@ void setup() {
   // ★追加：ピンの電圧が「HIGHからLOWに落ちた瞬間(FALLING)」にカウント関数を呼ぶよう設定
   attachInterrupt(digitalPinToInterrupt(PHOTO1_PIN), isrPhoto1, FALLING);
   attachInterrupt(digitalPinToInterrupt(PHOTO2_PIN), isrPhoto2, FALLING);
-
-  
 
   instrumentPanel.begin();
 
@@ -303,10 +312,10 @@ void setup() {
   xTaskCreatePinnedToCore(commTask, "commTask", 4096, NULL, 1, NULL, 0);
 }
 
-int count1;
+/*=====================================================================================================================================================
+======================loop() メイン処理====================================================================================================
+====================================================================================================================================================*/
 void loop() {
-  photo1 = digitalRead(PHOTO1_PIN);
-  photo2 = digitalRead(PHOTO2_PIN);
   tktsw = digitalRead(tktsw_PIN);
   // タクトスイッチによるキャリブレーション（500ms長押し検知）
   // GPIO35はプルダウン構成：未押下=LOW、押下=HIGH
@@ -371,7 +380,6 @@ void loop() {
     }
     readkisoku();
     calcRPM();
-
     MCP23017_LED();
     lastPrint1 = millis();
   }
@@ -383,7 +391,7 @@ void loop() {
   }
 }
 
-/* ===== 関数定義 ===== */
+/* =========== 関数定義 =============================================================================================================== */
 // Core 0 で 50Hz の ESP-NOW 送信を担当する。
 // 画面更新やセンサ I/O が走る loop() (Core 1) と分離することで、
 // Wi-Fi 送信と SPI/I2C のリソース競合による表示の引っかかりを抑える。
@@ -806,7 +814,6 @@ void sendAndoroid() {
     if (r_servo_temp < 5)
       errors.add(502);  // ラダーサーボ温度異常
   }
-
   // 600 (ロガー通信エラー) はロガーからのハートビート実装後に復活予定
   for (JsonVariant e : errors) {
     myAndroid.addError(e.as<int>());
