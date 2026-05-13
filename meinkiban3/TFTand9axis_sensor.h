@@ -834,14 +834,6 @@ public:
     return _calibrated;
   }
 
-  void getRef_alt(double a1t) {    //meinkiban3.inoで設定したref_altをTFTand9axixs_sensor.hでも使用できるようにする
-    ref_alt = (float)a1t;
-  }
-
-  void getAlt_offset(double Altitude){ //meinkiban3.inoで設定したAlt_offsetをTFTand9axixs_sensor.hでも使用できるようにする
-    Alt_offset = (float)Altitude;
-  }
-
   float returnRef_alt() {   //NVSに保存されたref_altをmeinkiban3.inoのsetup()で返す
     return ref_alt;
   }
