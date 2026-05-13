@@ -217,6 +217,7 @@ bool ultra_active = false;
 bool gps_active = false;
 bool sdp_active = false;
 bool imu_active = false;
+bool CtrlStickCommunication_active = false;
 
 void setup() {
   delay(500);
@@ -793,12 +794,19 @@ void sendAndoroid() {
     errors.add(201);  // 9軸センサーエラー
     errors.add(403);
   }
-  if (millis() - g_lastRecvFromSoujyuukanMs > LINK_TIMEOUT_MS)
+  if (millis() - g_lastRecvFromSoujyuukanMs > LINK_TIMEOUT_MS){
     errors.add(500);  // 操縦桿との通信エラー (ESP-NOW: 500ms 無音で判定)
-  if (e_servo_temp < 5)
-    errors.add(501);  // エレベーターサーボ温度異常
-  if (r_servo_temp < 5)
-    errors.add(502);  // ラダーサーボ温度異常
+    CtrlStickCommunication_active = false;
+  }else{
+    CtrlStickCommunication_active = true;
+  }
+  if(CtrlStickCommunication_active){
+    if (e_servo_temp < 5)
+      errors.add(501);  // エレベーターサーボ温度異常
+    if (r_servo_temp < 5)
+      errors.add(502);  // ラダーサーボ温度異常
+  }
+
   // 600 (ロガー通信エラー) はロガーからのハートビート実装後に復活予定
   for (JsonVariant e : errors) {
     myAndroid.addError(e.as<int>());
