@@ -260,13 +260,11 @@ void setup() {
   Alt_offset = instrumentPanel.returnAlt_offset();
 
   if (mcp.begin_I2C(0x20, &Wire1)) {
-    // Serial.println("MCP23017 Init OK");
     mcp.pinMode(LED1, OUTPUT);
     mcp.pinMode(LED2, OUTPUT);
     mcp.pinMode(LED3, OUTPUT);
     mcp_active = true;
   } else {
-    // Serial.println("MCP23017 Init Failed");
     mcp_active = false;
   }
 
@@ -367,7 +365,7 @@ void loop() {
   if (millis() - lastPrint1 >= interval) {
     tgrsw = digitalRead(tgrsw_PIN);
     count1 += 1;
-    if(count1 >= 180){
+    if(count1 >= 65){
       count1 = 0;
     }
     readkisoku();
@@ -493,7 +491,6 @@ void MCP23017_LED() {
   if (Wire1.endTransmission() == 0) {
     // 応答あり
     if (!mcp_active) {
-      // Serial.println("MCP23017 Recovered! Re-initializing pins...");
       //  begin_I2Cを呼ばずに、直接ピン設定だけをやり直す
       mcp.pinMode(LED1, OUTPUT);
       mcp.pinMode(LED2, OUTPUT);
@@ -507,38 +504,36 @@ void MCP23017_LED() {
   } else {
     // 応答なし（エラー状態）
     if (mcp_active) {
-      // Serial.println("MCP23017 Connection Lost!");
     }
     mcp_active = false;
   }
-
   if (mcp_active) {
     // 正常に生きている時だけLEDを操作
     if (count1 <= 5) {
       mcp.digitalWrite(LED1, HIGH);
       mcp.digitalWrite(LED2, LOW);
       mcp.digitalWrite(LED3, LOW);
-    } else if (5 < count1 && count1 <= 20) {
+    } else if (5 < count1 && count1 <= 10) {
       mcp.digitalWrite(LED1, HIGH);
       mcp.digitalWrite(LED2, LOW);
       mcp.digitalWrite(LED3, LOW);
-    } else if (20 < count1 && count1 <= 60) {
+    } else if (15 < count1 && count1 <= 20) {
       mcp.digitalWrite(LED1, HIGH);
       mcp.digitalWrite(LED2, HIGH);
       mcp.digitalWrite(LED3, LOW);
-    } else if (60 < count1 && count1 <= 80) {
+    } else if (25 < count1 && count1 <= 30) {
       mcp.digitalWrite(LED1, LOW);
       mcp.digitalWrite(LED2, HIGH);
       mcp.digitalWrite(LED3, LOW);
-    } else if (80 < count1 && count1 <= 100) {
+    } else if (35 < count1 && count1 <= 40) {
       mcp.digitalWrite(LED1, LOW);
       mcp.digitalWrite(LED2, HIGH);
       mcp.digitalWrite(LED3, HIGH);
-    } else if (100 < count1 && count1 <= 120) {
+    } else if (45 < count1 && count1 <= 50) {
       mcp.digitalWrite(LED1, LOW);
       mcp.digitalWrite(LED2, LOW);
       mcp.digitalWrite(LED3, HIGH);
-    } else if (120 < count1 && count1 <= 140) {
+    } else if (55 < count1 && count1 <= 60) {
       mcp.digitalWrite(LED1, HIGH);
       mcp.digitalWrite(LED2, LOW);
       mcp.digitalWrite(LED3, HIGH);
