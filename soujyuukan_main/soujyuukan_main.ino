@@ -96,6 +96,7 @@ float RudderDegMin = -9.3;  //-10.1
 float RudderDegMax = 9.3;
 
 //KRS→ 舵角に変換する関数
+// クランプは可動域 ±5° より広く取り、ロガー側で実サーボのオーバーシュートも観測できるようにしている
 float krs2ele(float x) {
   x = 2.9862304768e-18 * pow(x, 5) - 7.42363558025e-14 * pow(x, 4) + 3.95030812038e-10 * pow(x, 3) + 2.10479251629e-06 * pow(x, 2) - 0.0174092175976 * pow(x, 1) + 18.1307278407;
   return constrain(x, -10, 10);
@@ -165,6 +166,7 @@ void loadSettings() {
   Trimelevetor = preferences.getFloat("trimE", 0.0);
   neutralTrimeEle = preferences.getFloat("neutE", 0.0);
   Trimrudder = preferences.getFloat("trimR", 0.0);
+  neutralRud = preferences.getFloat("neutR", 0.0);
   for (int i = 0; i < 4; i++) {
     char k[8];
     snprintf(k, sizeof(k), "ele%d", i);
@@ -173,7 +175,7 @@ void loadSettings() {
     rudrgs[i] = preferences.getInt(k, rudrgs[i]);
   }
   preferences.end();
-  Serial.printf("Settings Loaded: E=%.2f, neutE=%.2f, R=%.2f\n", Trimelevetor, neutralTrimeEle, Trimrudder);
+  Serial.printf("Settings Loaded: E=%.2f, neutE=%.2f, R=%.2f, neutR=%.0f\n", Trimelevetor, neutralTrimeEle, Trimrudder, neutralRud);
   Serial.printf("elergs={%d,%d,%d,%d} rudrgs={%d,%d,%d,%d}\n",
                 elergs[0], elergs[1], elergs[2], elergs[3],
                 rudrgs[0], rudrgs[1], rudrgs[2], rudrgs[3]);
@@ -189,6 +191,7 @@ void nvmTask(void *pvParameters) {
     preferences.putFloat("trimE", Trimelevetor);
     preferences.putFloat("neutE", neutralTrimeEle);
     preferences.putFloat("trimR", Trimrudder);
+    preferences.putFloat("neutR", neutralRud);
     for (int i = 0; i < 4; i++) {
       char k[8];
       snprintf(k, sizeof(k), "ele%d", i);
@@ -555,7 +558,7 @@ void mainloop(void *pvParameters) {
     nv.R_steer = fmap(rawRud,rudrgs[0],rudrgs[3],30,-30);
     nv.E_trim = Trimelevetor - neutralTrimeEle;
     nv.E_angle = -krs2ele((float)getpos1);
-    nv.R_angle = -krs2rud((float)(getpos0 - neutralRud));
+    nv.R_angle = -(krs2rud((float)getpos0) - krs2rud((float)neutralRud));
     nv.e_servo_temp = cachedTempE;
     nv.r_servo_temp = cachedTempR;
     nv.is_assisted = (is_pid && pitchLinkOk && is_center);
