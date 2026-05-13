@@ -5,21 +5,19 @@
 #include <SPI.h>
 #include <time.h>
 #include <sys/time.h>
-
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
-
 #include "TFTand9axis_sensor.h"
-
-Adafruit_MCP23X17 mcp;
-TFTand9axis_sensor instrumentPanel;
-
 #include <ArduinoJson.h>
-
-// --- Include Custom Libraries ---
 #include "TBT_GNSS.h"
 #include "TBT_AndroidSerial.h"
+
+// --- Library Instances ---
+TBT_GNSS mygnss;
+TBT_AndroidSerial myAndroid;
+Adafruit_MCP23X17 mcp;
+TFTand9axis_sensor instrumentPanel;
 
 /* ===== ピン・アドレス定義 ===== */
 #define I2C0_SDA 21
@@ -124,7 +122,6 @@ void readSiseikaku();
 void startAltimeter();
 void readAltimeter();
 bool startMeasurement();
-void setGPS();
 void loopGPS();
 void readkisoku();
 void MCP23017_LED();
@@ -135,7 +132,7 @@ void IRAM_ATTR isrPhoto2();
 void calcRPM();
 void sendCtrlStick();
 void sendLogger();
-void commTask(void *pvParameters);]
+void commTask(void *pvParameters);
 /*----------------------------------------------------------------------*/
 
 /* =========================通信で使用する構造体============================================================*/
@@ -226,10 +223,6 @@ void onSent(const wifi_tx_info_t *tx_info, esp_now_send_status_t status) {
   // 成功時は静かにする (毎回ログると邪魔)
 }
 
-// --- Custom Library Instances ---
-TBT_GNSS mygnss;
-TBT_AndroidSerial myAndroid;
-
 void setup() {
   delay(500);
 
@@ -249,7 +242,10 @@ void setup() {
 
   delay(100);
 
-  setGPS();
+  // Attach AndroidSerial to main Serial (USB)
+  myAndroid.attach(115200);
+  // Attach GNSS (Baud, RX, TX, UART#)
+  mygnss.attach(921600, 16, 17, 1);
 
   pinMode(PHOTO1_PIN, INPUT);
   pinMode(PHOTO2_PIN, INPUT);
@@ -707,13 +703,6 @@ void clearI2CBus(int sdaPin, int sclPin) {
   gpio_pullup_dis((gpio_num_t)sclPin);
 }
 
-void setGPS() {
-  // Attach AndroidSerial to main Serial (USB)
-  myAndroid.attach(115200);
-  // Attach GNSS (Baud, RX, TX, UART#)
-  mygnss.attach(921600, 16, 17, 1);
-}
-
 void loopGPS() {
   lat = mygnss.get(GNSS_LATITUDE);
   lon = mygnss.get(GNSS_LONGITUDE);
@@ -747,7 +736,6 @@ void loopGPS() {
 
 void sendAndoroid() {
   myAndroid.resetData();
-
   // Web Data - Steering and Control
   myAndroid.add("E_steer", E_steer);
   myAndroid.add("R_steer", R_steer);
