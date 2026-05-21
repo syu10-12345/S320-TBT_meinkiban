@@ -117,6 +117,9 @@ float Trimrudder = 0.0;
 float neutralRud = 0;//単位はkrs
 int getpos0 = 0;
 
+int getpos1 = 0;
+float neutralele = 0;//単位はkrs
+
 
 bool is_pid = 0;  //今PID制御をONにするかどうか(0か1)
 
@@ -326,6 +329,7 @@ void trimElevetor() {
       neutralBandHoldFrames = 0;
       neutralTrimeEle = Trimelevetor;
       neutralRud = getpos0;
+      neutralele = getpos1;
       settingsChanged = true;
       xTaskCreate(Ltika, "Ltika", 1024, NULL, 9, NULL);
     }
@@ -539,7 +543,7 @@ void mainloop(void *pvParameters) {
     int setpos0 = krs.setPos(0, krsR);  // ラダー
     int setpos1 = krs.setPos(1, krsE);  // エレベータ
     getpos0 = krs.getPos(0);        // ラダー実位置
-    int getpos1 = krs.getPos(1);        // エレベータ実位置
+    getpos1 = krs.getPos(1);        // エレベータ実位置
 
     // サーボ温度取得（1秒に1回）
     tempReadCounter++;
@@ -557,7 +561,7 @@ void mainloop(void *pvParameters) {
     nv.E_steer = fmap(rawEle,elergs[0],elergs[3],30,-30);
     nv.R_steer = fmap(rawRud,rudrgs[0],rudrgs[3],30,-30);
     nv.E_trim = Trimelevetor - neutralTrimeEle;
-    nv.E_angle = -krs2ele((float)getpos1);
+    nv.E_angle = -(krs2ele((float)getpos1) - krs2ele((float)neutralele));
     nv.R_angle = -(krs2rud((float)getpos0) - krs2rud((float)neutralRud));
     nv.e_servo_temp = cachedTempE;
     nv.r_servo_temp = cachedTempR;
@@ -566,7 +570,7 @@ void mainloop(void *pvParameters) {
 
     esp_now_send(BROADCAST_MAC, (uint8_t *)&nv, sizeof(nv));
 
-    Serial.printf("E:%.1f R:%.1f krs:%d,%d setPos:%d,%d raw:%d,%d getPos:%d,%d pitch:%.1f pid:%.1f temp:%d\n", krs2ele((float)getpos1), krs2rud((float)getpos0), krsE, krsR, setpos0, setpos1, rawEle, rawRud, getpos0, getpos1, currentPitch, tempDegE,TrimE_temp);
+    Serial.printf("E:%.1f R:%.1f deg:%f,%f krs:%d,%d setPos:%d,%d raw:%d,%d getPos:%d,%d pitch:%.1f pid:%.1f temp:%d\n", krs2ele((float)getpos1), krs2rud((float)getpos0), degE,degR,krsE, krsR,setpos0, setpos1, rawEle, rawRud, getpos0, getpos1, currentPitch, tempDegE,TrimE_temp);
 
     vTaskDelayUntil(&xLastWakeTime, xFrequency);
   }
