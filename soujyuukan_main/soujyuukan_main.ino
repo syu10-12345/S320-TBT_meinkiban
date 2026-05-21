@@ -20,8 +20,8 @@ const int r_elevator = 2;  //可変抵抗エレベーター
 const int r_rudder = 3;    //可変抵抗ラダー
 const int trimE = 4;       //エレベータートリムスイッチ
 const int LED = 5;
-const int trimR1 = 9;    //トリムラダー
-const int trimR2 = 10;   //トリムラダー
+const int trimR1 = 10;   //トリムラダー (左右が物理的に逆だったため pin 9 と 10 を入れ替え)
+const int trimR2 = 9;    //トリムラダー
 
 
 //ADC検証モード
@@ -560,7 +560,8 @@ void mainloop(void *pvParameters) {
     nv.role = ROLE_SOUJYUUKAN;
     nv.E_steer = fmap(rawEle,elergs[0],elergs[3],30,-30);
     nv.R_steer = fmap(rawRud,rudrgs[0],rudrgs[3],30,-30);
-    nv.E_trim = Trimelevetor - neutralTrimeEle;
+    // E_trim 送信時に符号反転: 内部 Trimelevetor の +方向とスマホ表示の +方向が逆のため境界で吸収
+    nv.E_trim = -(Trimelevetor - neutralTrimeEle);
     nv.E_angle = -(krs2ele((float)getpos1) - krs2ele((float)neutralele));
     nv.R_angle = -(krs2rud((float)getpos0) - krs2rud((float)neutralRud));
     nv.e_servo_temp = cachedTempE;

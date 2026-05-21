@@ -137,6 +137,12 @@ IMU の取付向きにより、航空慣例と符号が逆:
 - `Kp=-1.0` の負符号がこの反転を補償している
 - 詳細は `soujyuukan_main/変数フローと増減表.md` セクション 8 を参照
 
+エレベータートリム送信時の符号反転 (`soujyuukan_main.ino`):
+- 内部の `Trimelevetor` の +方向と、スマホ表示の +方向が逆
+- `nv.E_trim = -(Trimelevetor - neutralTrimeEle)` で**送信境界で吸収**
+- 内部ロジック (degE = elevetor + Trimelevetor) は触らないので、ボタン挙動・サーボ指令・E_angle に影響なし
+- meinkiban3 経由でロガー (`FullTelemetryPacket`) にも反転後の値が伝播する
+
 ### NavigationData 構造体 (ESP-NOW 通信)
 
 ```cpp
