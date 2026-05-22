@@ -64,6 +64,7 @@ int tktsw;
 volatile int tgrsw;
 /*===========GNSS関連の変数==========================================*/
 //機体の位置を取得するための変数
+int gnss_status;
 double lat;
 double lon;
 double alt;          //gnnss_alt - ref_altを表わす変数で地面からどのくらいの距離かを表す変数
@@ -381,7 +382,7 @@ void loop() {
   }
 
   if (millis() - lastPrint2 >= interval) {
-    //loopGPS();
+    loopGPS();
     sendAndoroid();
     lastPrint2 = millis();
   }
@@ -487,7 +488,6 @@ void sendLogger() {
 
   esp_err_t r = esp_now_send(BROADCAST_MAC, (uint8_t *)&packet, sizeof(packet));
   if (r != ESP_OK) {
-    // Serial.printf("[send] error code=%d\n", r);
   }
 }
 
@@ -577,7 +577,6 @@ void readAltimeter() {
     }
   } else {
     // 読み取り失敗！ -> 即座にバスクリアと再初期化を行う
-    // Serial.println("I2C0 Error: Resetting Bus...");
     ultra_active = false;
     Wire.end();  // ペリフェラルを一旦停止
 
@@ -603,8 +602,6 @@ bool startMeasurement() {
   if (error == 0) {
     return true;
   } else {
-    // Serial.print("SDP810 Start Fail! Error: ");
-    // Serial.println(error);
     return false;
   }
 }
@@ -646,7 +643,6 @@ void readkisoku() {
     } else {
       // パターンB: MCPも死んでいるなら、I2Cバスが完全にフリーズしている！
       // ここで初めて、バスの強制リセットと全員の再起動を行う
-      // Serial.println("I2C1 Error: Resetting Bus...");
       Wire1.end();
       clearI2CBus(I2C1_SDA, I2C1_SCL);
       Wire1.begin(I2C1_SDA, I2C1_SCL);
@@ -704,6 +700,7 @@ void clearI2CBus(int sdaPin, int sclPin) {
 }
 
 void loopGPS() {
+  gnss_status = (int)mygnss.get(GNSS_STATUS);
   lat = mygnss.get(GNSS_LATITUDE);
   lon = mygnss.get(GNSS_LONGITUDE);
   gnss_alt = mygnss.get(GNSS_ALTITUDE);
@@ -764,21 +761,12 @@ void sendAndoroid() {
   myAndroid.add("heading", (int)heading);
   myAndroid.add("gnss_heading", (int)gnss_heading);
 
-  // Accuracy logic
-  if (fixType >= 3) {  // 3D or better
-    myAndroid.add("gps_accuracy", 0.5);
-  } else if (fixType == 2) {  // 2D
-    myAndroid.add("gps_accuracy", 5.0);
-  } else {
-    myAndroid.add("gps_accuracy", 99.9);
-  }
-
   // Electrical Errors Logic
   StaticJsonDocument<512> errorDoc;
   JsonArray errors = errorDoc.to<JsonArray>();
 
   // エラーがあれば番号を追加！
-  if (1)
+  if ((fixType < 3 || fixType == 5) && gnss_status != 1)
     errors.add(200);  // GPSエラー
   if (!mcp_active)
     errors.add(400);  // MCP23017エラー
