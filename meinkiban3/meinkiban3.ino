@@ -766,8 +766,10 @@ void sendAndoroid() {
   JsonArray errors = errorDoc.to<JsonArray>();
 
   // エラーがあれば番号を追加！
-  if ((fixType < 3 || fixType == 5) && gnss_status != 1)
-    errors.add(200);  // GPSエラー
+  if (fixType < 3 || fixType == 5 || gnss_status != 1)
+    errors.add(200);  // GPS受信不良
+  if(gnss_status != 1)
+    erros.add(404);   //GPS接続エラー
   if (!mcp_active)
     errors.add(400);  // MCP23017エラー
   if (!ultra_active)
