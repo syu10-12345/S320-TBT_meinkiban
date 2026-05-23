@@ -769,7 +769,7 @@ void sendAndoroid() {
   if (fixType < 3 || fixType == 5 || gnss_status != 1)
     errors.add(200);  // GPS受信不良
   if(gnss_status != 1)
-    erros.add(404);   //GPS接続エラー
+    errors.add(404);   //GPS接続エラー
   if (!mcp_active)
     errors.add(400);  // MCP23017エラー
   if (!ultra_active)
