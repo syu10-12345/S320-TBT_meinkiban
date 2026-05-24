@@ -122,7 +122,7 @@ void clearI2CBus(int sdaPin, int sclPin);
 void readSiseikaku();
 void startAltimeter();
 void getAltitude();
-bool startMeasurement_Air_speed();
+bool startMeasurementAir_speed();
 void loopGPS();
 void getAir_speed();
 void MCP23017_LED();
@@ -278,7 +278,7 @@ void setup() {
 
   /* --- 超音波 初回測定 --- */
   startAltimeter();
-  startMeasurement_Air_speed();
+  startMeasurementAir_speed();
   delay(20);
 
   // ESP-NOWの初期設定
@@ -630,7 +630,7 @@ void getAir_speed() {
     air_speed = 0.0;
 
     if (mcp_active == true) {
-      startMeasurement_Air_speed();
+      startMeasurementAir_speed();
     } else {
       Wire1.end();
       clearI2CBus(I2C1_SDA, I2C1_SCL);
@@ -646,7 +646,7 @@ void getAir_speed() {
       } else {
         mcp_active = false;
       }
-      startMeasurement_Air_speed();
+      startMeasurementAir_speed();
     }
   }
 }
