@@ -121,10 +121,10 @@ volatile String electrical_errors = "[]";
 void clearI2CBus(int sdaPin, int sclPin);
 void readSiseikaku();
 void startAltimeter();
-void readAltimeter();
-bool startMeasurement();
+void getAltitude();
+bool startMeasurement_Air_speed();
 void loopGPS();
-void readkisoku();
+void getAir_speed();
 void MCP23017_LED();
 void sendAndoroid();
 void confirmICM();
@@ -263,7 +263,8 @@ void setup() {
 
   instrumentPanel.begin();
 
-  ref_alt = instrumentPanel.returnRef_alt();
+  //不揮発性メモリからとりだす
+  ref_alt = instrumentPanel.returnRef_alt(); 
   Alt_offset = instrumentPanel.returnAlt_offset();
 
   if (mcp.begin_I2C(0x20, &Wire1)) {
@@ -277,7 +278,7 @@ void setup() {
 
   /* --- 超音波 初回測定 --- */
   startAltimeter();
-  startMeasurement();
+  startMeasurement_Air_speed();
   delay(20);
 
   // ESP-NOWの初期設定
@@ -375,7 +376,7 @@ void loop() {
     if(count1 >= 65){
       count1 = 0;
     }
-    readkisoku();
+    getAir_speed();
     calcRPM();
     MCP23017_LED();
     lastPrint1 = millis();
@@ -409,7 +410,7 @@ void commTask(void *pvParameters) {
       // 超音波 MB1242 (interval = 100ms)
       if (millis() - lastUltraTime >= interval) {
         if (ultra_active) {
-          readAltimeter();
+          getAltitude();
           if (Altitude < 0) {
             Altitude = 0;
           }
@@ -513,7 +514,6 @@ void MCP23017_LED() {
     mcp_active = false;
   }
   if (mcp_active) {
-    // 正常に生きている時だけLEDを操作
     if (count1 <= 5) {
       mcp.digitalWrite(LED1, HIGH);
       mcp.digitalWrite(LED2, LOW);
@@ -562,7 +562,7 @@ void startAltimeter() {
   }
 }
 
-void readAltimeter() {
+void getAltitude() {
   Wire.requestFrom(ADDR_MB1242, 2);
 
   if (Wire.available() >= 2) {
@@ -587,14 +587,10 @@ void readAltimeter() {
     Wire.begin(I2C0_SDA, I2C0_SCL);
     Wire.setTimeOut(50);
     Wire.setClock(100000);
-
-    // IMUもI2C0にいるため、再初期化が必要になる場合があります
-    // （IMUの内部レジスタ設定が飛んでいない限りは通信可能です）
-    // imu.init(); // 必要に応じてコメントアウトを外す
   }
 }
 
-bool startMeasurement() {
+bool startMeasurementAir_speed() {
   Wire1.beginTransmission(SDP810_ADDR);
   Wire1.write(0x36);
   Wire1.write(0x15);  // 平均化ありの連続測定
@@ -606,11 +602,11 @@ bool startMeasurement() {
   }
 }
 
-void readkisoku() {
-  int16_t dp_raw;
-  int16_t temp_raw;
-  float tempreature;
-  float pressurePa;
+void getAir_speed() {
+  int16_t dp_raw;            //生の差圧データ
+  int16_t temp_raw;          //生の温度データ
+  float tempreature;         //温度
+  float pressurePa;          //差圧
 
   byte count = Wire1.requestFrom(SDP810_ADDR, 6);
 
@@ -627,22 +623,15 @@ void readkisoku() {
     AIR_DENSITY = 101325 / (287 * (tempreature + 273.15));
     if (pressurePa < 0)
       pressurePa = 0;
-    // 風速計算
-    air_speed = 1.23 * sqrt(2 * pressurePa / AIR_DENSITY);
+    // 対気速度を計算
+    air_speed = 1.23 * sqrt(2 * pressurePa / AIR_DENSITY);   //風洞実験から得られた係数1.23、ベルヌーイの定理を用いて計算
   } else {
     sdp_active = false;
     air_speed = 0.0;
 
-    // ==========================================
-    // ★賢いエラー判定（巻き添えリセット防止システム）
-    // ==========================================
     if (mcp_active == true) {
-      // パターンA: MCPが生きているなら、I2Cバス全体は正常！
-      // 単にSDP810が接触不良なので、バスは破壊せずに「測定開始」だけもう一度試す
-      startMeasurement();
+      startMeasurement_Air_speed();
     } else {
-      // パターンB: MCPも死んでいるなら、I2Cバスが完全にフリーズしている！
-      // ここで初めて、バスの強制リセットと全員の再起動を行う
       Wire1.end();
       clearI2CBus(I2C1_SDA, I2C1_SCL);
       Wire1.begin(I2C1_SDA, I2C1_SCL);
@@ -650,17 +639,14 @@ void readkisoku() {
       Wire1.setClock(100000);
 
       if (mcp.begin_I2C(0x20, &Wire1)) {
-        // I2C通信が再開できたら、ピンの出力設定もやり直す
         mcp.pinMode(LED1, OUTPUT);
         mcp.pinMode(LED2, OUTPUT);
         mcp.pinMode(LED3, OUTPUT);
         mcp_active = true;
-        // Serial.println("MCP23017 Recovered!");
       } else {
         mcp_active = false;
-        // Serial.println("MCP23017 Recovery Failed.");
       }
-      startMeasurement();
+      startMeasurement_Air_speed();
     }
   }
 }
@@ -733,7 +719,7 @@ void loopGPS() {
 
 void sendAndoroid() {
   myAndroid.resetData();
-  // Web Data - Steering and Control
+  // Steering and Control
   myAndroid.add("E_steer", E_steer);
   myAndroid.add("R_steer", R_steer);
   myAndroid.add("E_trim", E_trim);
@@ -742,7 +728,7 @@ void sendAndoroid() {
   myAndroid.add("e_servo_temp", e_servo_temp);
   myAndroid.add("r_servo_temp", r_servo_temp);
 
-  // Web Data - Flight Parameters
+  // Flight Parameters
   myAndroid.add("air_speed", air_speed);
   myAndroid.add("gnd_speed", gnd_speed);
   myAndroid.add("pitch", pitch);
@@ -868,10 +854,10 @@ void calcRPM() {
 }
 
 void confirmICM() {
-  Wire.beginTransmission(0x68);  // ※もし常にエラーになる場合は 0x69 に変えてみてください
+  Wire.beginTransmission(0x68);  // 常にエラーの場合 0x68 → 0x69
   if (Wire.endTransmission() == 0) {
-    imu_active = true;  // 返事あり！生きている
+    imu_active = true;
   } else {
-    imu_active = false;  // 返事なし！エラー発生
+    imu_active = false; 
   }
 }
