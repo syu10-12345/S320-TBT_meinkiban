@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
+#include "../common/S320Protocol.h"
 
 // ===============================
 // ピン設定
@@ -15,35 +16,6 @@ static const int LED_PIN = 2;
 // ===============================
 HardwareSerial OpenLog(1);
 
-
-
-static const uint8_t WIFI_CHANNEL = 1;
-static uint8_t BROADCAST_MAC[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
-
-#pragma pack(push, 1)
-struct FullTelemetryPacket {
-  uint32_t magic;
-  uint8_t role;
-  float E_steer, R_steer;
-  float E_trim, E_angle, R_angle;
-  float e_servo_temp, r_servo_temp;
-  bool is_assisted;
-  float pitch;
-  float roll;
-  float pitch_rate;
-  float roll_rate;
-  float front_rpm, rear_rpm;
-  float air_speed, gnd_speed, Altitude, heading;
-  double lat, lon;
-  uint32_t epoch_time;
-  uint32_t ctrl_stk_t;
-  uint32_t main_bord_t;
-  bool electrical_errors[12];
-};
-#pragma pack(pop)
-#define MAGIC 0x53333230u
-#define ROLE_MEINKIBAN3 1
-#define ROLE_LOGGER 3
 
 
 bool diagOk = false; //OpenLog診断が成功したかどうか。
@@ -258,7 +230,11 @@ String csvHeader() {
     "pitch,roll,"
     "pitch_rate,roll_rate,"
     "front_rpm,rear_rpm,"
-    "E_steer,R_steer,E_trim,E_angle,R_angle,"
+    "E_raw_adc,R_raw_adc,"
+    "ele_param0,ele_param1,ele_param2,ele_param3,"
+    "rud_param0,rud_param1,rud_param2,rud_param3,"
+    "E_stick_mapped,R_stick_mapped,E_krs,R_krs,"
+    "E_trim,E_angle,R_angle,"
     "e_servo_temp,r_servo_temp,is_assisted,"
     "err0,err1,err2,err3,err4,err5,err6,err7,err8,err9,err10,err11";
 }
@@ -274,7 +250,11 @@ size_t packetToCsv(const FullTelemetryPacket& p, char* buf, size_t bufsize) {
     "%.3f,%.3f,"
     "%.7f,%.7f,"
     "%.1f,%.1f,"
-    "%.3f,%.3f,%.3f,%.3f,%.3f,"
+    "%d,%d,"
+    "%d,%d,%d,%d,"
+    "%d,%d,%d,%d,"
+    "%.3f,%.3f,%d,%d,"
+    "%.3f,%.3f,%.3f,"
     "%.3f,%.3f,%d,"
     "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
     (unsigned long)p.epoch_time,(unsigned long)p.ctrl_stk_t,(unsigned long)p.main_bord_t,
@@ -284,7 +264,11 @@ size_t packetToCsv(const FullTelemetryPacket& p, char* buf, size_t bufsize) {
     p.pitch, p.roll,
     p.pitch_rate, p.roll_rate,
     p.front_rpm, p.rear_rpm,
-    p.E_steer, p.R_steer, p.E_trim, p.E_angle, p.R_angle,
+    p.E_raw_adc, p.R_raw_adc,
+    p.ele_param[0], p.ele_param[1], p.ele_param[2], p.ele_param[3],
+    p.rud_param[0], p.rud_param[1], p.rud_param[2], p.rud_param[3],
+    p.E_stick_mapped, p.R_stick_mapped, p.E_krs, p.R_krs,
+    p.E_trim, p.E_angle, p.R_angle,
     p.e_servo_temp, p.r_servo_temp, p.is_assisted ? 1 : 0,
     p.electrical_errors[0]  ? 1 : 0,
     p.electrical_errors[1]  ? 1 : 0,
@@ -490,7 +474,7 @@ void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
   if(p.role != ROLE_MEINKIBAN3) return;
   lastOnRecv = millis();
 
-  char buf[384];
+  char buf[512];
   size_t n = packetToCsv(p, buf, sizeof(buf) - 2);
   if (n == (size_t)-1) return;  // 切り詰められたら欠損行を吐かない
   buf[n++] = '\r';

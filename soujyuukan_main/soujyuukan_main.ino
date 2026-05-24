@@ -7,6 +7,7 @@
 #include <esp_wifi.h>
 #include "DeadzoneResult.h"
 #include "PidState.h"
+#include "../common/S320Protocol.h"
 
 
 Preferences preferences;
@@ -35,30 +36,6 @@ volatile float currentPitchRate = 0.0f;
 volatile uint32_t g_lastPitchRecvMs = 0;
 static const uint32_t PITCH_LINK_TIMEOUT_MS = 300;  // 300ms 無音で PID 停止
 
-
-#pragma pack(push, 1)
-struct ControlData {
-  uint32_t magic;
-  uint8_t role;
-  float E_steer, R_steer;
-  float E_trim,E_angle, R_angle;
-  float e_servo_temp, r_servo_temp;
-  bool is_assisted;
-  uint32_t ctrl_stk_t;
-};
-struct NavigationData {
-  uint32_t magic;
-  uint8_t role;
-  float pitch;
-  float pitch_rate;
-};
-#pragma pack(pop)
-static const uint8_t WIFI_CHANNEL = 1;
-static uint8_t BROADCAST_MAC[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
-#define MAGIC 0x53333230u
-#define ROLE_MEINKIBAN3 1
-#define ROLE_SOUJYUUKAN 2
-#define ROLE_LOGGER 3
 
 void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
   // meinkiban3 から来る NavigationData (pitch, pitch_rate) を受信する
@@ -558,8 +535,16 @@ void mainloop(void *pvParameters) {
     ControlData nv;
     nv.magic = MAGIC;
     nv.role = ROLE_SOUJYUUKAN;
-    nv.E_steer = fmap(rawEle,elergs[0],elergs[3],30,-30);
-    nv.R_steer = fmap(rawRud,rudrgs[0],rudrgs[3],30,-30);
+    nv.E_raw_adc = rawEle;
+    nv.R_raw_adc = rawRud;
+    for (int i = 0; i < 4; i++) {
+      nv.ele_param[i] = elergs[i];
+      nv.rud_param[i] = rudrgs[i];
+    }
+    nv.E_stick_mapped = fmap(elevetor,ElevatorDegMax,ElevatorDegMin,30,-30);
+    nv.R_stick_mapped = fmap(rudder,RudderDegMax,RudderDegMin,30,-30);
+    nv.R_krs = krsR;
+    nv.E_krs = krsE;
     // E_trim 送信時に符号反転: 内部 Trimelevetor の +方向とスマホ表示の +方向が逆のため境界で吸収
     nv.E_trim = -(Trimelevetor - neutralTrimeEle);
     nv.E_angle = -(krs2ele((float)getpos1) - krs2ele((float)neutralele));
