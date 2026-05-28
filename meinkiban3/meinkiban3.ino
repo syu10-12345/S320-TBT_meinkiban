@@ -8,7 +8,6 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
-#include "../common/S320Protocol.h"
 #include "TFTand9axis_sensor.h"
 #include <ArduinoJson.h>
 #include "TBT_GNSS.h"
@@ -107,17 +106,13 @@ bool imu_active = false;
 bool CtrlStickCommunication_active = false;
 
 /*========================操縦桿系統の変数====================================*/
-volatile int16_t E_raw_adc = 0;
-volatile int16_t R_raw_adc = 0;
-volatile int16_t ele_param[4];
-volatile int16_t rud_param[4];
-volatile float E_stick_mapped, R_stick_mapped;
-volatile int16_t E_krs,R_krs;
-volatile float E_trim = 0;
-volatile float E_angle = 0;
-volatile float R_angle = 0;
-volatile float e_servo_temp = 0.0;
-volatile float r_servo_temp = 0.0;
+volatile double E_steer = 0;
+volatile double R_steer = 0;
+volatile double E_trim = 0;
+volatile double E_angle = 0;
+volatile double R_angle = 0;
+volatile double e_servo_temp = 0.0;
+volatile double r_servo_temp = 0.0;
 volatile bool is_assisted = false;
 volatile uint32_t ctrl_stk_t = 0;
 volatile String electrical_errors = "[]";
@@ -139,7 +134,49 @@ void calcRPM();
 void sendCtrlStick();
 void sendLogger();
 void commTask(void *pvParameters);
+/*----------------------------------------------------------------------*/
 
+/* =========================通信で使用する構造体============================================================*/
+#pragma pack(push, 1)
+struct ControlData  // 操縦用 C3 から meinkiban3 に送られてくるデータ
+{
+  uint32_t magic;
+  uint8_t role;
+  float E_steer, R_steer;
+  float E_trim, E_angle, R_angle;
+  float e_servo_temp, r_servo_temp;
+  bool is_assisted;
+  uint32_t ctrl_stk_t;
+};
+struct NavigationData  // meinkiban3 から操縦用 C3 に送る、主にジャイロ関連のデータ
+{
+  uint32_t magic;
+  uint8_t role;
+  float pitch;
+  float pitch_rate;  // ジャイロ Y軸 [°/s] — PID の D項に使用
+};
+struct FullTelemetryPacket {  //メイン基板からロガー C3に送る
+  uint32_t magic;
+  uint8_t role;
+  float E_steer, R_steer;
+  float E_trim, E_angle, R_angle;
+  float e_servo_temp, r_servo_temp;
+  bool is_assisted;
+  float pitch;
+  float roll;
+  float pitch_rate;
+  float roll_rate;
+  float front_rpm, rear_rpm;
+  float air_speed, gnd_speed, Altitude, heading;
+  double lat, lon;
+  uint32_t epoch_time;
+  uint32_t ctrl_stk_t;
+  uint32_t main_bord_t;
+  bool electrical_errors[12];
+};
+/*========================================================================================================================================*/
+static const uint8_t WIFI_CHANNEL = 1;
+static uint8_t BROADCAST_MAC[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 
 // ESP-NOW はコネクションレスなので、最終受信時刻で疎通を判定する
 static volatile uint32_t g_lastRecvFromSoujyuukanMs = 0;
@@ -148,6 +185,12 @@ static const uint32_t LINK_TIMEOUT_MS = 500;
 // I2C0 (Wire) は commTask(Core0) が独占する。キャリブ中は loop()(Core1) が
 // IMU を長時間占有するので、commTask 側の I2C0 アクセスを一時停止する。
 static volatile bool g_calibrating = false;
+
+#pragma pack(pop)
+#define MAGIC 0x53333230u
+#define ROLE_MEINKIBAN3 1
+#define ROLE_SOUJYUUKAN 2
+#define ROLE_LOGGER 3
 
 // --- 受信コールバック（操縦用C3からデータが届いた時） ---
 void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
@@ -162,16 +205,8 @@ void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
   if (pkt.role != ROLE_SOUJYUUKAN)
     return;
 
-  E_raw_adc = pkt.E_raw_adc;
-  R_raw_adc = pkt.R_raw_adc;
-  for (int i = 0; i < 4; i++) {
-    ele_param[i] = pkt.ele_param[i];
-    rud_param[i] = pkt.rud_param[i];
-  }
-  E_krs = pkt.E_krs;
-  R_krs = pkt.R_krs;
-  E_stick_mapped = pkt.E_stick_mapped;
-  R_stick_mapped = pkt.R_stick_mapped;
+  E_steer = pkt.E_steer;
+  R_steer = pkt.R_steer;
   E_trim = pkt.E_trim;
   E_angle = pkt.E_angle;
   R_angle = pkt.R_angle;
@@ -435,16 +470,8 @@ void sendLogger() {
   packet.rear_rpm = (float)rear_rpm;
   packet.epoch_time = epoch_time;
 
-  packet.E_raw_adc = E_raw_adc;
-  packet.R_raw_adc = R_raw_adc;
-  packet.E_stick_mapped = E_stick_mapped;
-  packet.R_stick_mapped = R_stick_mapped;
-  for (int i = 0; i < 4; i++) {
-    packet.ele_param[i] = ele_param[i];
-    packet.rud_param[i] = rud_param[i];
-  }
-  packet.E_krs = E_krs;
-  packet.R_krs = R_krs;
+  packet.E_steer = (float)E_steer;
+  packet.R_steer = (float)R_steer;
   packet.E_trim = (float)E_trim;
   packet.E_angle = (float)E_angle;
   packet.R_angle = (float)R_angle;
@@ -693,20 +720,8 @@ void loopGPS() {
 void sendAndoroid() {
   myAndroid.resetData();
   // Steering and Control
-  myAndroid.add("E_raw_adc",E_raw_adc);
-  myAndroid.add("R_raw_adc",R_raw_adc);
-  myAndroid.add("ele_param0",ele_param[0]);
-  myAndroid.add("ele_param1",ele_param[1]);
-  myAndroid.add("ele_param2",ele_param[2]);
-  myAndroid.add("ele_param3",ele_param[3]);
-  myAndroid.add("rud_param0",rud_param[0]);
-  myAndroid.add("rud_param1",rud_param[1]);
-  myAndroid.add("rud_param2",rud_param[2]);
-  myAndroid.add("rud_param3",rud_param[3]);
-  myAndroid.add("E_krs",E_krs);
-  myAndroid.add("R_krs",R_krs);
-  myAndroid.add("E_steer", E_stick_mapped);
-  myAndroid.add("R_steer", R_stick_mapped);
+  myAndroid.add("E_steer", E_steer);
+  myAndroid.add("R_steer", R_steer);
   myAndroid.add("E_trim", E_trim);
   myAndroid.add("E_angle", E_angle);
   myAndroid.add("R_angle", R_angle);
