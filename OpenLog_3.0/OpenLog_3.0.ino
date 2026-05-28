@@ -2,7 +2,7 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
-#include "../common/S320Protocol.h"
+#include "S320Protocol.h"
 
 // ===============================
 // ピン設定

@@ -7,7 +7,7 @@
 #include <esp_wifi.h>
 #include "DeadzoneResult.h"
 #include "PidState.h"
-#include "../common/S320Protocol.h"
+#include "S320Protocol.h"
 
 
 Preferences preferences;

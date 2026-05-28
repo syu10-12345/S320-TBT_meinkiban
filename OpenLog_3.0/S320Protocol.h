@@ -1,10 +1,11 @@
 #pragma once
+// 複製注意: meinkiban3 / soujyuukan_main / OpenLog_3.0 で同一に保つこと (不一致だと sizeof 違いで ESP-NOW パケットが破棄される)
 #include <stdint.h>
 #pragma pack(push, 1)
 struct ControlData {
   uint32_t magic;
   uint8_t role;
-  
+
   int16_t E_raw_adc, R_raw_adc;
   int16_t ele_param[4];
   int16_t rud_param[4];

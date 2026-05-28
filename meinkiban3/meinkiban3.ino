@@ -8,7 +8,7 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
-#include "../common/S320Protocol.h"
+#include "S320Protocol.h"
 #include "TFTand9axis_sensor.h"
 #include <ArduinoJson.h>
 #include "TBT_GNSS.h"
