@@ -673,10 +673,8 @@ void loopGPS() {
   second = mygnss.get(GNSS_SECOND);
   struct tm timeinfo;
   alt = gnss_alt - ref_alt;
-  if (0 < alt && alt < Alt_limmit) {
-    alt = Alt_limmit;
-  } else if (alt <= 0) {
-    alt = 0;
+  if (alt < 0) {
+    alt = -alt;
   }
   // ③ 箱に数字を流し込む（※年と月に「C言語特有の罠」があるので注意！）
   timeinfo.tm_year = year - 1900;  // 年は「1900」を引くルール
