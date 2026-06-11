@@ -6,8 +6,9 @@
 
 ```
 meinkiban3/          # メイン基板 (ESP32-S3 WROOM) — 機体側フライトコンピュータ
-  meinkiban3.ino       主制御ループ。センサー読み取り・ESP-NOW通信・テレメトリ送信
-  TFTand9axis_sensor.h ICM20948(9軸IMU) + TFTディスプレイ + キャリブレーション
+  meinkiban3.ino         主制御ループ。センサー読み取り・ESP-NOW通信・テレメトリ送信
+  TFTand9axis_sensor.h   ICM20948(9軸IMU) + TFTディスプレイ + キャリブレーション(宣言)
+  TFTand9axis_sensor.cpp 実装。姿勢角は Madgwick フィルタ(加速度+ジャイロ)で算出
 
 soujyuukan_main/     # 操縦桿基板 (ESP32-S3) — パイロット側コントローラ
   soujyuukan_main.ino  ポテンショメータ入力 → フィルタ → PID → KRSサーボ制御
@@ -137,6 +138,19 @@ IMU の取付向きにより、航空慣例と符号が逆:
 - `Kp=-1.0` の負符号がこの反転を補償している
 - 詳細は `soujyuukan_main/変数フローと増減表.md` セクション 8 を参照
 
+### 姿勢推定の変更 (Madgwick 移植, 2026-06)
+
+- 姿勢角(pitch/roll)は **Madgwick フィルタ(加速度+ジャイロのフュージョン)** で算出するよう変更。
+  旧 `myIMU.getPitch()/getRoll()`(加速度のみ・フュージョンなし)は廃止。
+- **符号は従来どおり維持**(機首上げ=負)。上記 `Kp=-1.0` 前提を壊さないよう意図的に同符号にしている。
+- **ただし大きさ(スケール)は変わった**。旧 `getPitch` は `asin` を二重適用して角度を圧縮していたため、
+  新しい pitch/roll は幾何的に正しい真の傾き角で、**旧値より約1.3〜1.55倍大きい**
+  (例: gx=0.1g → 旧 -3.9° / 新 -5.7°)。`NavigationData.pitch` で送られ PID(Kp は角度に線形)に入るため、
+  **実効ピッチゲインが約1.4倍**になる。旧スケールで調整したゲイン/過去ログは直接比較できない点に注意
+  (PID は現状 Phase 0/1 = OFF/シャドウなので実害なし。本格導入前に再評価する)。
+- heading は従来どおり地磁気の傾き補正で算出(Madgwick のヨーは未使用 = ドリフトしない)。
+- `pitch_rate`/`roll_rate` はジャイロ生値[deg/s]のまま(PID の D項が直接使用)。
+
 ### NavigationData 構造体 (ESP-NOW 通信)
 
 ```cpp
@@ -194,7 +208,7 @@ meinkiban3 と soujyuukan_main の両方で同じ定義が必要 (`#pragma pack(
 - 対気速度による制御有効性変化 (V^2 依存) への対策が未実装
 - ラダーの PID 制御はプレースホルダーのみ
 - `integralMax=30°` はエレベーター可動域 ±5° に対して大きすぎる可能性あり
-- `getPitch()` の符号が航空慣例と逆 — IMU 取付向き依存。入口で反転して慣例に合わせることを検討
+- 姿勢角の符号が航空慣例と逆(機首上げ=負) — IMU 取付向き依存。下流PIDが `Kp=-1.0` で補償する前提のため、Madgwick 移植後も意図的に同符号を維持(「姿勢推定の変更」参照)
 
 ## cd && git
  - cd && gitをする際は、git -Cを使ってほしい。
