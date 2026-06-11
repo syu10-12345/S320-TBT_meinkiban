@@ -467,6 +467,7 @@ bool setupOpenLogLogging() {
 // onRecv
 // ===============================
 void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
+  //Serial.printf("RX len=%d need=%d\n", len, (int)sizeof(FullTelemetryPacket));
   if (len != sizeof(FullTelemetryPacket)) return;
   FullTelemetryPacket p;
   memcpy(&p,data,sizeof(p));
