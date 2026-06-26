@@ -111,7 +111,7 @@ public:
 
   // p, r は姿勢角 [rad]、pr, rr はジャイロ角速度 [deg/s] を返す。
   // 角度と角速度で単位系が混在しているので、呼び出し側で取り違えないこと。
-  void getPitchAndRollAndHeading(double *p, double *r, double *h, double *pr, double *rr);
+  void getPitchAndRollAndHeading(double *p, double *r, double *h, double *pr, double *rr,double *yr,double *ax,double *ay,double *az);
 
   void drawCalStatus(const char *phase, int current = -1, int total = -1);
   void calibrate();

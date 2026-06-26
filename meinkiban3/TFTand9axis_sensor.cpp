@@ -567,13 +567,14 @@ void TFTand9axis_sensor::begin() {
 // ※ pitch/roll の符号は従来(getPitch/getRoll)と同じ(機首上げ=負)。下流のPID(Kp=-1.0で
 //   反転を補償)がこの符号前提のため意図的に維持している。AGENTS.md「符号規約」参照。
 // ※ heading は従来どおり地磁気の傾き補正で算出(Madgwick のヨーは使わない)。
-void TFTand9axis_sensor::getPitchAndRollAndHeading(double *p, double *r, double *h, double *pr, double *rr) {
+void TFTand9axis_sensor::getPitchAndRollAndHeading(double *p, double *r, double *h, double *pr, double *rr,double *yr,double *ax,double *ay,double *az) {
   if (!_calibrated) {
     *p = 0.0;
     *r = 0.0;
     *h = 0.0;
     *pr = 0.0;
     *rr = 0.0;
+    *yr = 0;
     return;
   }
 
@@ -581,6 +582,8 @@ void TFTand9axis_sensor::getPitchAndRollAndHeading(double *p, double *r, double 
 
   xyzFloat gVal;
   myIMU.getGValues(&gVal);      // 加速度 [g] (キャリブ済みオフセット適用後)
+  *ax=gVal.x;*ay=gVal.y;*az=gVal.z;
+  
   xyzFloat gyrVal;
   myIMU.getGyrValues(&gyrVal);  // ジャイロ [deg/s]
 
@@ -621,6 +624,7 @@ void TFTand9axis_sensor::getPitchAndRollAndHeading(double *p, double *r, double 
   // ジャイロ角速度 [deg/s] は生値のまま返す (PID の D項が直接使用するため加工しない)
   *pr = gyrVal.y;  // ピッチ軸角速度 [deg/s]
   *rr = gyrVal.x;  // ロール軸角速度 [deg/s]
+  *yr = gyrVal.z;
 
   // --- 地磁気による方位(傾き補正付き) ---
   xyzFloat magVal;

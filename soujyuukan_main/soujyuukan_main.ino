@@ -61,16 +61,16 @@ static float ele2krs(float x) {
 }
 
 static float rud2krs(float x) {
-  x = -0.0105114837351 * pow(x, 5) - 0.0659075647903 * pow(x, 4) + 0.241297817826 * pow(x, 3) + 2.97624922026 * pow(x, 2) - 179.910899851 * pow(x, 1) + 6563.03984539;
-  return constrain(x,4000,8900);
+  x = -0.0144233545612*pow(x, 5) - 0.0190437126408*pow(x, 4) + 0.764883266183*pow(x, 3) + 1.92504043344*pow(x, 2) - 193.297915219*pow(x, 1) + 6677.24446533;
+  return constrain(x,3950,9250);
 }
 
 // 舵角上下限
 float ElevatorDegMin = -5;
 float ElevatorDegMed = 0;
 float ElevatorDegMax = 5;
-float RudderDegMin = -9.3;  //-10.1
-float RudderDegMax = 9.3;
+float RudderDegMin = -9.9;  //-10.1
+float RudderDegMax = 9.9;
 
 //KRS→ 舵角に変換する関数
 // クランプは可動域 ±5° より広く取り、ロガー側で実サーボのオーバーシュートも観測できるようにしている
@@ -247,117 +247,82 @@ void Potentiometer() {
   rudder = rudr.mappedValue;
 }
 
-unsigned long lastPushed = millis();  //ボタン4チャタリング防止用
 
-// ニュートラル帯(2000..2300): 長押しはイン帯フレーム数、単押しは帯外が安定してから確定(@30Hz想定)
-static const int NEUTRAL_LONG_PRESS_FRAMES = 30;     
-static const int NEUTRAL_RELEASE_STABLE_FRAMES = 4;  
-static bool neutralStrokeActive = false;
-static bool neutralLongPressDone = false;
-static int neutralBandHoldFrames = 0;
-static int neutralOutsideStableFrames = 0;
-static bool neutralWasInBand = false;
 
 //pid制御
 bool pidWasInBand = false;
 static const int PID_LONG_PRESS_FRAMES = 30;
 int pidBandHoldFrames = 0;
 
+unsigned long lastPushed = millis();  //ボタン4チャタリング防止用
+int h[120];
+const int his_SIZE = 120;
+int hi = 0;
 
-static void resetNeutralGesture() {
-  neutralStrokeActive = false;
-  neutralLongPressDone = false;
-  neutralBandHoldFrames = 0;
-  neutralOutsideStableFrames = 0;
-  neutralWasInBand = false;
-}
+#define mn(n) (hi + his_SIZE - (n % his_SIZE)) % his_SIZE
 
-int TrimE_temp;
+int TrimE;
+int TrimE_temp ;
 void trimElevetor() {
-  int TrimE = analogRead(trimE);
-  TrimE_temp = TrimE;
+  hi = (hi+1) % his_SIZE;
+  TrimE_temp = TrimE = analogRead(trimE);
 
   if (0 <= TrimE && TrimE <= 100) {  //優先度1
-    resetNeutralGesture();
+    h[hi] = 1;
+  } else if (665 <= TrimE && TrimE <= 1675) {  // 優先度2
+    h[hi] = 2;
+  } else if (1675 <= TrimE && TrimE <= 2820) {// 優先度3
+    h[hi] = 3;
+  } else if (2820 <= TrimE && TrimE <= 3995) {  //優先度4
+    h[hi] = 4;
+  }else{
+    h[hi] = -1;
+  }
+  //newindex = (index + SIZE - (n % SIZE)) % SIZE; リングバッファでn戻りたい場合。
+
+  if(h[hi] == 1){
     Trimelevetor = constrain(Trimelevetor - 0.1,ElevatorDegMin,ElevatorDegMax);
     settingsChanged = true;
-
-  } else if (665 <= TrimE && TrimE <= 1675) {  // 優先度2
-    resetNeutralGesture();
+  }else if(h[hi] == 2){
     Trimelevetor = constrain(Trimelevetor + 0.1,ElevatorDegMin,ElevatorDegMax);
     settingsChanged = true;
+  }
 
-  } else if (1675 <= TrimE && TrimE <= 2820) {// 優先度3
-    neutralOutsideStableFrames = 0;
-    if (!neutralWasInBand) {
-      neutralBandHoldFrames = 1;
-    } else {
-      neutralBandHoldFrames++;
-    }
-    neutralWasInBand = true;
+  //ボタン3が単押しか確認するゾーン
+  bool isthreetan = 1;
+  for(int i = 2;i < 6;i++){
+    isthreetan = isthreetan && h[mn(i)] == 3;
+  }
+  if(h[mn(0)] != 3 && h[mn(1)] != 3 && isthreetan && h[mn(6)] != 3 && h[mn(7)] != 3){
+    Trimelevetor = neutralTrimeEle;
+    settingsChanged = true;
+  }
 
-    if (!neutralStrokeActive) {
-      neutralStrokeActive = true;
-      neutralLongPressDone = false;
-    }
-    //Serial.printf("neutralBandHoldFrames%d neutralLongPressDone:%d\n",neutralBandHoldFrames,neutralLongPressDone);
-    if (neutralBandHoldFrames > NEUTRAL_LONG_PRESS_FRAMES && !neutralLongPressDone) {
-      neutralLongPressDone = true;
-      neutralBandHoldFrames = 0;
-      neutralTrimeEle = Trimelevetor;
-      neutralRud = getpos0;
-      neutralele = getpos1;
-      settingsChanged = true;
-      xTaskCreate(Ltika, "Ltika", 1024, NULL, 9, NULL);
-    }
+  //ボタン3が長押しか確認するゾーン
+  bool isthreenaga = 1;
+  for(int i = 2; i < 32;i++){
+    isthreenaga = isthreenaga && h[mn(i)] == 3;
+  }
+  if(h[mn(0)] != 3 && h[mn(1)] != 3 && isthreenaga){
+    neutralTrimeEle = Trimelevetor;
+    neutralRud = getpos0;
+    neutralele = getpos1;
+    settingsChanged = true;
+    xTaskCreate(Ltika, "Ltika", 1024, NULL, 9, NULL);
+  }
 
-  } else if (2820 <= TrimE && TrimE <= 3995) {  //優先度4
-
-    if(is_pid && !pidWasInBand){
+  //ボタン4がある程度長押しか確認するゾーン
+  bool isfornaga = 1;
+  for(int i = 0;i < 4;i++){
+    isfornaga = isfornaga && h[mn(i)] == 4;
+  }
+  if(isfornaga){
+    if(is_pid == true){
       is_pid = false;
-    }
-
-    if (!pidWasInBand) {
-      pidBandHoldFrames = 1;
-    } else {
-      pidBandHoldFrames++;
-    }
-    pidWasInBand = true;
-
-    Serial.printf("%d ",pidBandHoldFrames);
-
-    if(pidBandHoldFrames >= 10){
+    }else{
       is_pid = true;
     }
-
-  } else {
-    pidWasInBand = false;
-    pidWasInBand = false;
-    pidBandHoldFrames = 0;
-
-
-
-    neutralWasInBand = false;
-
-    if (neutralStrokeActive) {
-      neutralBandHoldFrames = 0;
-      neutralOutsideStableFrames++;
-      if (neutralOutsideStableFrames >= NEUTRAL_RELEASE_STABLE_FRAMES) {
-        if (!neutralLongPressDone) {
-          Trimelevetor = neutralTrimeEle;
-          settingsChanged = true;
-        }
-        resetNeutralGesture();
-      }
-    } else {
-      neutralOutsideStableFrames = 0;
-    }
-    if (settingsChanged && nvmTaskHandle != NULL) {
-      xTaskNotifyGive(nvmTaskHandle);
-      settingsChanged = false;
-    }
   }
-  
 }
 
 bool trimRudder() {
@@ -369,11 +334,11 @@ bool trimRudder() {
   }
 
   if (nowTrimR1 == HIGH) {
-    Trimrudder = Trimrudder - 0.1;
+    Trimrudder = Trimrudder + 0.1;
     settingsChanged = true;
   }
   if (nowTrimR2 == HIGH) {
-    Trimrudder = Trimrudder + 0.1;
+    Trimrudder = Trimrudder - 0.1;
     settingsChanged = true;
   }
 

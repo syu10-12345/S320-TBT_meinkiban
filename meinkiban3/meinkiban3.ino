@@ -42,9 +42,14 @@ const long interval = 100;         // 更新間隔（ミリ秒）
 int count1;     //LEDを光らせるときに使用するカウント変数
 //姿勢角計
 double pitch = 0.0;
+double roll = 0.0;
 double pitch_rate = 0.0;  // ジャイロ ピッチレート [°/s]
 double roll_rate = 0.0;   // ジャイロ ロールレート [°/s]
-double roll = 0.0;
+double yaw_rate = 0;
+double ax = 0;
+double ay = 0;
+double az = 0;
+
 double heading = 0.0;
 double pitch_rad;
 double roll_rad;
@@ -367,7 +372,7 @@ void commTask(void *pvParameters) {
     // 占有するので、競合を避けるため Wire アクセスを丸ごとスキップする。
     if (!g_calibrating) {
       // IMU 50Hz サンプリング (PID D項用 pitch_rate を含む)
-      instrumentPanel.getPitchAndRollAndHeading(&pitch_rad, &roll_rad, &heading_rad, &pitch_rate, &roll_rate);
+      instrumentPanel.getPitchAndRollAndHeading(&pitch_rad, &roll_rad, &heading_rad, &pitch_rate, &roll_rate, &yaw_rate, &ax, &ay, &az);
       pitch = pitch_rad * (180.0 / PI);
       roll = roll_rad * (180.0 / PI);
       heading = heading_rad * (180.0 / PI);
@@ -424,6 +429,10 @@ void sendLogger() {
   packet.roll = (float)roll;
   packet.pitch_rate = (float)pitch_rate;
   packet.roll_rate = (float)roll_rate;
+  packet.yaw_rate = (float)yaw_rate;
+  packet.ax = (float)ax;
+  packet.ay = (float)ay;
+  packet.az = (float)az;
 
   packet.lat = lat;
   packet.lon = lon;
