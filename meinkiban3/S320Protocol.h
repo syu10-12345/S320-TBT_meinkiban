@@ -47,6 +47,13 @@ struct FullTelemetryPacket {  //メイン基板からロガー C3に送る
   uint32_t ctrl_stk_t;
   uint32_t main_bord_t;
   bool electrical_errors[12];
+  // ★αβベーン(AS5600 ×2 via TCA9548A) ─ 3基板で同一に保つこと(未同期だと全パケット破棄/#1)
+  float    vane_alpha_deg, vane_beta_deg;       // 正規化角[deg](中立基準, 約±180)
+  uint16_t vane_alpha_raw, vane_beta_raw;       // 生角[0-4095](診断・脱落検出用)
+  uint8_t  vane_alpha_health, vane_beta_health; // bit0:present 1:MD 2:ML 3:MH
+  uint8_t  vane_alpha_agc, vane_beta_agc;       // AGC(3.3V:0-128, 中央~64狙い)
+  uint32_t vane_t;                              // ベーン取得時刻[ms](信号整列用)
+  uint32_t seq;                                 // テレメトリ連番(ESP-NOWロス検出用)
 };
 #pragma pack(pop)
 static const uint8_t WIFI_CHANNEL = 1;

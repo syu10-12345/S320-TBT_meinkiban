@@ -1,4 +1,5 @@
 #include <Wire.h>
+#include <Preferences.h>          // ★αβベーン: AS5600ゼロ点をNVSに保存
 #include <Adafruit_MCP23X17.h>
 #include <ICM20948_WE.h>
 #include <TFT_eSPI.h>
@@ -35,6 +36,16 @@ TFTand9axis_sensor instrumentPanel;
 #define LED2 0
 #define LED3 1
 
+/* ===== ★αβベーン: TCA9548A mux + AS5600 ×2 (Wire1/I2C1) ===== */
+#define MUX_ADDR      0x70   // TCA9548A(A0/A1/A2=GND)。MB1242と同じ0x70だが別バス(Wire1)なので非衝突
+#define AS5600_ADDR   0x36   // AS5600(固定)
+#define CH_ALPHA      0      // mux ch0 = 迎角α
+#define CH_BETA       1      // mux ch1 = 横滑りβ
+#define REG_RAW_ANGLE 0x0C   // 12bit 生角
+#define REG_STATUS    0x0B   // bit5:MD bit4:ML bit3:MH
+#define REG_AGC       0x1A   // 自動ゲイン(3.3V:0-128)
+#define VANE_INTERVAL 20     // [ms] ベーン読み周期。loop/TFT負荷が重ければ40(25Hz)へ
+
 /* ======================= グローバル変数 ========================================================== */
 //loop()内の時間を管理する変数
 unsigned long previousMillis = 0;  // 前回の更新時間を保存
@@ -65,6 +76,18 @@ double air_speed = 0.0;
 double gnd_speed = 0.0;
 int16_t rawPressure;
 double AIR_DENSITY;
+
+/*==========★αβベーン(AS5600×2 via mux, Wire1)の変数==========*/
+Preferences   vanePrefs;
+float         vane_alpha_deg = 0.0f, vane_beta_deg = 0.0f;   // 正規化角[deg]
+uint16_t      vane_alpha_raw = 0,    vane_beta_raw = 0;       // 生角[0-4095]
+uint8_t       vane_alpha_health = 0, vane_beta_health = 0;    // bit0:present 1:MD 2:ML 3:MH
+uint8_t       vane_alpha_agc = 0,    vane_beta_agc = 0;       // AGC
+uint16_t      vane_alpha_zpos = 2048, vane_beta_zpos = 2048;  // ゼロ点(NVS, 既定2048)
+bool          vane_alpha_active = false, vane_beta_active = false;
+unsigned long vane_t = 0;             // ベーン取得時刻[ms]
+unsigned long lastVaneMs = 0;
+uint32_t      g_seq = 0;              // テレメトリ連番
 //スイッチが押されているかどうか判別する変数
 int tktsw;
 volatile int tgrsw;
@@ -144,6 +167,10 @@ void calcRPM();
 void sendCtrlStick();
 void sendLogger();
 void commTask(void *pvParameters);
+// ★αβベーン
+void readVanes();
+void loadVaneZero();
+void saveVaneZero();
 
 
 // ESP-NOW はコネクションレスなので、最終受信時刻で疎通を判定する
@@ -208,7 +235,7 @@ void setup() {
 
   /* --- I2C1 : 差圧センサ --- */
   Wire1.begin(I2C1_SDA, I2C1_SCL);
-  Wire1.setTimeOut(50);
+  //Wire1.setTimeOut(50);
   Wire1.setClock(100000);
 
   delay(100);
@@ -275,6 +302,13 @@ void setup() {
 
   esp_now_register_send_cb(onSent);
   esp_now_register_recv_cb(onRecv);
+
+  // ★αβベーン: ゼロ点をNVSからロード(既定2048=機械中立をRAW≒2048に合わせる前提)
+  loadVaneZero();
+  // ★Protocol.h整合チェック: この数値が OpenLog 側と一致しないとロガーは全パケット破棄(#1)
+  Serial.printf("[proto] sizeof(FullTelemetryPacket)=%u (★3基板で一致必須)\n",
+                (unsigned)sizeof(FullTelemetryPacket));
+  Serial.printf("[vane] zpos a=%u b=%u\n", vane_alpha_zpos, vane_beta_zpos);
 
   // 通信処理を Core 0 に分離。loop() (Core 1) の画面更新と干渉させない
   xTaskCreatePinnedToCore(commTask, "commTask", 4096, NULL, 1, NULL, 0);
@@ -349,13 +383,20 @@ void loop() {
     getAir_speed();
     calcRPM();
     MCP23017_LED();
-    lastPrint1 = millis();
+    lastPrint1 += millis();
   }
 
   if (millis() - lastPrint2 >= interval) {
     loopGPS();
     sendAndoroid();
-    lastPrint2 = millis();
+    lastPrint2 += millis();
+  }
+
+  // ★αβベーン: 50Hzで読む。Wire1は loop(Core1) 単一オーナーのまま
+  //   (SDP810/MCP23017 と同じタスクで逐次アクセス=クロスコアのレース無し)
+  if (millis() - lastVaneMs >= VANE_INTERVAL) {
+    lastVaneMs = millis();
+    readVanes();
   }
 }
 
@@ -468,6 +509,20 @@ void sendLogger() {
   packet.electrical_errors[2] = ultra_active;
   packet.electrical_errors[3] = sdp_active;
   packet.electrical_errors[4] = imu_active;
+  packet.electrical_errors[5] = vane_alpha_active;   // ★αβベーン
+  packet.electrical_errors[6] = vane_beta_active;
+
+  // ★αβベーン: 取得済みグローバルをパケットへ(送信は50HzのcommTask)
+  packet.vane_alpha_deg    = vane_alpha_deg;
+  packet.vane_beta_deg     = vane_beta_deg;
+  packet.vane_alpha_raw    = vane_alpha_raw;
+  packet.vane_beta_raw     = vane_beta_raw;
+  packet.vane_alpha_health = vane_alpha_health;
+  packet.vane_beta_health  = vane_beta_health;
+  packet.vane_alpha_agc    = vane_alpha_agc;
+  packet.vane_beta_agc     = vane_beta_agc;
+  packet.vane_t            = vane_t;
+  packet.seq               = g_seq++;
 
   esp_err_t r = esp_now_send(BROADCAST_MAC, (uint8_t *)&packet, sizeof(packet));
   if (r != ESP_OK) {
@@ -850,6 +905,127 @@ void confirmICM() {
   if (Wire.endTransmission() == 0) {
     imu_active = true;
   } else {
-    imu_active = false; 
+    imu_active = false;
   }
+}
+
+/* =====================================================================
+ *  ★αβベーン (AS5600 ×2 via TCA9548A mux, Wire1/I2C1)
+ *   ・mux 0x70 / AS5600 0x36(各ch) ・ch選択はstateless(毎回明示/#12,#22)
+ *   ・RAWラップ正規化(中立=zpos, NVS, 既定2048/#2) ・OTPは焼かない(#3)
+ *   ・健全性 MD/ML/MH(★A案=鉄なのでML監視が重要/#23) ・AGCは1Hz
+ *   ・読み後 deselect で SDP810(対気速度V) を隔離(#7)
+ *   ・読みは loop(Core1) から = Wire1単一オーナー(SDP810/MCPと同タスク)
+ * ===================================================================== */
+
+// muxチャネル選択(ステートレス)
+static void muxSelect(uint8_t ch) {
+  Wire1.beginTransmission(MUX_ADDR);
+  Wire1.write((uint8_t)(1 << ch));
+  Wire1.endTransmission();
+}
+// 全ch切離し(SDP810を巻き込ませない)
+static void muxDisableAll() {
+  Wire1.beginTransmission(MUX_ADDR);
+  Wire1.write((uint8_t)0x00);
+  Wire1.endTransmission();
+}
+// AS5600(0x36)の8bitレジスタ。成功でtrue
+static bool as5600Read8(uint8_t reg, uint8_t *out) {
+  Wire1.beginTransmission(AS5600_ADDR);
+  Wire1.write(reg);
+  if (Wire1.endTransmission(false) != 0) return false;        // リピートスタート
+  if (Wire1.requestFrom((uint8_t)AS5600_ADDR, (uint8_t)1) != 1) return false;
+  *out = Wire1.read();
+  return true;
+}
+// AS5600の12bit(上位reg, reg+1)。成功でtrue
+static bool as5600Read12(uint8_t reg, uint16_t *out) {
+  Wire1.beginTransmission(AS5600_ADDR);
+  Wire1.write(reg);
+  if (Wire1.endTransmission(false) != 0) return false;
+  if (Wire1.requestFrom((uint8_t)AS5600_ADDR, (uint8_t)2) != 2) return false;
+  uint16_t hi = Wire1.read(), lo = Wire1.read();
+  *out = (uint16_t)(((hi << 8) | lo) & 0x0FFF);
+  return true;
+}
+// 1個のベーンを読む(chは呼び出し側で選択済み)。readAgc=trueでAGCも更新
+static void readOneVane(uint16_t zpos, bool readAgc,
+                        uint16_t *raw, float *deg, uint8_t *health,
+                        uint8_t *agc, bool *active) {
+  uint16_t r;
+  uint8_t st;
+  if (!(as5600Read12(REG_RAW_ANGLE, &r) && as5600Read8(REG_STATUS, &st))) {
+    *active = false;
+    *health = 0;            // present=0。deg/rawは前回値保持(後処理でhealthを見て除外)
+    return;
+  }
+  *active = true;
+  *raw = r;
+  // ラップ正規化: 中立zpos基準で ±2048 に折り返す(0/4095境界跨ぎ対策/#2)
+  int diff = ((int)r - (int)zpos) & 0x0FFF;
+  if (diff > 2048) diff -= 4096;
+  *deg = diff * (360.0f / 4096.0f);
+  // 健全性 bit0:present bit1:MD bit2:ML bit3:MH
+  uint8_t h = 0x01;
+  if (st & 0x20) h |= 0x02;   // MD 磁石検出
+  if (st & 0x10) h |= 0x04;   // ML 磁界よわい(★鉄で注意)
+  if (st & 0x08) h |= 0x08;   // MH 磁界つよい
+  *health = h;
+  if (readAgc) {
+    uint8_t a;
+    if (as5600Read8(REG_AGC, &a)) *agc = a;
+  }
+}
+// バス異常時の軽復帰(SDP810を守るため最小限。getAir_speed と同流儀)
+static void vaneBusRecover() {
+  Wire1.end();
+  clearI2CBus(I2C1_SDA, I2C1_SCL);
+  Wire1.begin(I2C1_SDA, I2C1_SCL);
+  Wire1.setTimeOut(50);
+  Wire1.setClock(100000);
+  startMeasurementAir_speed();   // SDP810の連続測定を再開
+}
+// 50Hzで呼ぶ。α(ch0)→β(ch1)→deselect
+void readVanes() {
+  static unsigned long lastAgcMs = 0;
+  bool doAgc = (millis() - lastAgcMs >= 1000);   // AGCは1Hzで十分
+  if (doAgc) lastAgcMs = millis();
+
+  // ── α (ch0) ── まずmuxに届くか確認(届かない=バス異常)
+  Wire1.beginTransmission(MUX_ADDR);
+  Wire1.write((uint8_t)(1 << CH_ALPHA));
+  if (Wire1.endTransmission() != 0) {
+    vane_alpha_active = vane_beta_active = false;
+    vane_alpha_health = vane_beta_health = 0;
+    vaneBusRecover();            // Vを守るため復帰だけして今回は中断
+    return;
+  }
+  readOneVane(vane_alpha_zpos, doAgc, &vane_alpha_raw, &vane_alpha_deg,
+              &vane_alpha_health, &vane_alpha_agc, &vane_alpha_active);
+
+  // ── β (ch1) ──
+  muxSelect(CH_BETA);
+  readOneVane(vane_beta_zpos, doAgc, &vane_beta_raw, &vane_beta_deg,
+              &vane_beta_health, &vane_beta_agc, &vane_beta_active);
+
+  // ── 隔離: 全ch切離しで SDP810(V) を人質に取らせない(#7) ──
+  muxDisableAll();
+  vane_t = millis();
+}
+// NVSからゼロ点をロード(既定2048)。OTPは焼かずソフトオフセットで運用(#3)
+void loadVaneZero() {
+  vanePrefs.begin("vane", true);   // read-only
+  vane_alpha_zpos = vanePrefs.getUShort("a_zpos", 2048);
+  vane_beta_zpos  = vanePrefs.getUShort("b_zpos", 2048);
+  vanePrefs.end();
+}
+// 現在のRAWをゼロ点として保存(治具で機械中立に固定して呼ぶ。トリガ未配線=手動で呼ぶ)
+void saveVaneZero() {
+  vanePrefs.begin("vane", false);  // read-write
+  vanePrefs.putUShort("a_zpos", vane_alpha_raw);
+  vanePrefs.putUShort("b_zpos", vane_beta_raw);
+  vanePrefs.end();
+  vane_alpha_zpos = vane_alpha_raw;
+  vane_beta_zpos  = vane_beta_raw;
 }
