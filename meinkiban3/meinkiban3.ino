@@ -1,5 +1,4 @@
 #include <Wire.h>
-#include <Preferences.h>          // ★αβベーン: AS5600ゼロ点をNVSに保存
 #include <Adafruit_MCP23X17.h>
 #include <ICM20948_WE.h>
 #include <TFT_eSPI.h>
@@ -169,8 +168,6 @@ void sendLogger();
 void commTask(void *pvParameters);
 // ★αβベーン
 void readVanes();
-void loadVaneZero();
-void saveVaneZero();
 
 
 // ESP-NOW はコネクションレスなので、最終受信時刻で疎通を判定する
@@ -302,13 +299,6 @@ void setup() {
 
   esp_now_register_send_cb(onSent);
   esp_now_register_recv_cb(onRecv);
-
-  // ★αβベーン: ゼロ点をNVSからロード(既定2048=機械中立をRAW≒2048に合わせる前提)
-  loadVaneZero();
-  // ★Protocol.h整合チェック: この数値が OpenLog 側と一致しないとロガーは全パケット破棄(#1)
-  Serial.printf("[proto] sizeof(FullTelemetryPacket)=%u (★3基板で一致必須)\n",
-                (unsigned)sizeof(FullTelemetryPacket));
-  Serial.printf("[vane] zpos a=%u b=%u\n", vane_alpha_zpos, vane_beta_zpos);
 
   // 通信処理を Core 0 に分離。loop() (Core 1) の画面更新と干渉させない
   xTaskCreatePinnedToCore(commTask, "commTask", 4096, NULL, 1, NULL, 0);
@@ -1012,20 +1002,4 @@ void readVanes() {
   // ── 隔離: 全ch切離しで SDP810(V) を人質に取らせない(#7) ──
   muxDisableAll();
   vane_t = millis();
-}
-// NVSからゼロ点をロード(既定2048)。OTPは焼かずソフトオフセットで運用(#3)
-void loadVaneZero() {
-  vanePrefs.begin("vane", true);   // read-only
-  vane_alpha_zpos = vanePrefs.getUShort("a_zpos", 2048);
-  vane_beta_zpos  = vanePrefs.getUShort("b_zpos", 2048);
-  vanePrefs.end();
-}
-// 現在のRAWをゼロ点として保存(治具で機械中立に固定して呼ぶ。トリガ未配線=手動で呼ぶ)
-void saveVaneZero() {
-  vanePrefs.begin("vane", false);  // read-write
-  vanePrefs.putUShort("a_zpos", vane_alpha_raw);
-  vanePrefs.putUShort("b_zpos", vane_beta_raw);
-  vanePrefs.end();
-  vane_alpha_zpos = vane_alpha_raw;
-  vane_beta_zpos  = vane_beta_raw;
 }
