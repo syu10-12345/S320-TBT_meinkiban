@@ -41,7 +41,6 @@ struct FullTelemetryPacket {  //メイン基板からロガー C3に送る
   float ax,ay,az;
   float front_rpm, rear_rpm;
   float air_speed, gnd_speed, Altitude, heading;
-  float vel_down;   // GNSS NED 下向き速度 [m/s] (ドップラー由来。上昇率 Vz = -vel_down)
   double lat, lon;
   uint32_t epoch_time;
   uint32_t ctrl_stk_t;

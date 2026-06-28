@@ -758,6 +758,8 @@ void sendAndoroid() {
   myAndroid.add("rud_param1",rud_param[1]);
   myAndroid.add("rud_param2",rud_param[2]);
   myAndroid.add("rud_param3",rud_param[3]);
+  myAndroid.add("vane_alpha_raw",vane_alpha_raw);
+  myAndroid.add("vane_beta_raw",vane_beta_raw);
   myAndroid.add("E_krs",E_krs);
   myAndroid.add("R_krs",R_krs);
   myAndroid.add("E_steer", E_stick_mapped);
@@ -912,10 +914,14 @@ void confirmICM() {
  * ===================================================================== */
 
 // muxチャネル選択(ステートレス)
-static void muxSelect(uint8_t ch) {
+static bool muxSelect(uint8_t ch) {
   Wire1.beginTransmission(MUX_ADDR);
   Wire1.write((uint8_t)(1 << ch));
-  Wire1.endTransmission();
+  if(Wire1.endTransmission() != 0){
+    return false;
+  }else{
+    return true;
+  }
 }
 // 全ch切離し(SDP810を巻き込ませない)
 static void muxDisableAll() {
@@ -998,7 +1004,14 @@ void readVanes() {
               &vane_alpha_health, &vane_alpha_agc, &vane_alpha_active);
 
   // ── β (ch1) ──
-  muxSelect(CH_BETA);
+  Wire1.beginTransmission(MUX_ADDR);
+  Wire1.write((uint8_t)(1 << CH_BETA));
+  if(Wire1.endTransmission() != 0){
+    vane_beta_active = false;
+    vane_beta_health = 0;
+    vaneBusRecover();
+    return;
+  }
   readOneVane(vane_beta_zpos, doAgc, &vane_beta_raw, &vane_beta_deg,
               &vane_beta_health, &vane_beta_agc, &vane_beta_active);
 

@@ -226,7 +226,7 @@ String csvHeader() {
     "epoch_time,ctrl_stk_t,main_bord_t,"
     "lat,lon,"
     "altitude,heading,"
-    "air_speed,gnd_speed,vel_down,"
+    "air_speed,gnd_speed,"
     "pitch,roll,"
     "pitch_rate,roll_rate,yaw_rate,"
     "ax,ay,az,"
@@ -250,7 +250,7 @@ size_t packetToCsv(const FullTelemetryPacket& p, char* buf, size_t bufsize) {
     "%lu,%lu,%lu,"
     "%.7f,%.7f,"
     "%.3f,%.3f,"
-    "%.3f,%.3f,%.3f,"
+    "%.3f,%.3f,"
     "%.3f,%.3f,"
     "%.7f,%.7f,%.3f,"
     "%.4f,%.4f,%.4f,"
@@ -268,7 +268,7 @@ size_t packetToCsv(const FullTelemetryPacket& p, char* buf, size_t bufsize) {
     (unsigned long)p.epoch_time,(unsigned long)p.ctrl_stk_t,(unsigned long)p.main_bord_t,
     p.lat, p.lon,
     p.Altitude, p.heading,
-    p.air_speed, p.gnd_speed, p.vel_down,
+    p.air_speed, p.gnd_speed,
     p.pitch, p.roll,
     p.pitch_rate, p.roll_rate, p.yaw_rate,
     p.ax, p.ay, p.az,
@@ -487,7 +487,7 @@ void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
   if(p.role != ROLE_MEINKIBAN3) return;
   lastOnRecv = millis();
 
-  char buf[768];   // ★ベーン列追加で行が長くなったため拡大(62列)
+  char buf[768];   // ★ベーン列追加で行が長くなったため拡大(61列)
   size_t n = packetToCsv(p, buf, sizeof(buf) - 2);
   if (n == (size_t)-1) return;  // 切り詰められたら欠損行を吐かない
   buf[n++] = '\r';
