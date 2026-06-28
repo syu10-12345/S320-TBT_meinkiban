@@ -64,6 +64,10 @@ double heading = 0.0;
 double pitch_rad;
 double roll_rad;
 double heading_rad;
+
+
+static unsigned long lastPrint1;
+static unsigned long lastPrint2;
 //高度計
 double raw_Altitude = 0.0;
 double Altitude = 0.0;
@@ -301,6 +305,9 @@ void setup() {
 
   // 通信処理を Core 0 に分離。loop() (Core 1) の画面更新と干渉させない
   xTaskCreatePinnedToCore(commTask, "commTask", 4096, NULL, 1, NULL, 0);
+  lastPrint1= millis();
+  lastPrint2=millis();
+  lastVaneMs = millis();
 }
 
 /*=====================================================================================================================================================
@@ -358,12 +365,10 @@ void loop() {
   // 超音波 / IMU 読み / confirmICM は commTask(Core0) に移動済。
   // loop() は TFT 描画と Wire1 系 (SDP810, MCP23017) のみ担当する。
 
-  static unsigned long lastPrint1 = 0;
-  static unsigned long lastPrint2 = 50;
-
   instrumentPanel.updata(E_trim, air_speed, front_rpm, Altitude);
 
-  if (millis() - lastPrint1 >= interval) {
+  if (millis() > lastPrint1) {
+    lastPrint1 += interval;
     tgrsw = digitalRead(tgrsw_PIN);
     count1 += 1;
     if(count1 >= 40){
@@ -372,19 +377,18 @@ void loop() {
     getAir_speed();
     calcRPM();
     MCP23017_LED();
-    lastPrint1 += millis();
   }
 
-  if (millis() - lastPrint2 >= interval) {
+  if (millis() > lastPrint2) {
+    lastPrint2 += interval;
     loopGPS();
     sendAndoroid();
-    lastPrint2 += millis();
   }
 
   // ★αβベーン: 50Hzで読む。Wire1は loop(Core1) 単一オーナーのまま
   //   (SDP810/MCP23017 と同じタスクで逐次アクセス=クロスコアのレース無し)
-  if (millis() - lastVaneMs >= VANE_INTERVAL) {
-    lastVaneMs = millis();
+  if (millis() > lastVaneMs) {
+    lastVaneMs += VANE_INTERVAL;
     readVanes();
   }
 }
