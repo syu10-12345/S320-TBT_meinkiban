@@ -226,9 +226,10 @@ String csvHeader() {
     "epoch_time,ctrl_stk_t,main_bord_t,"
     "lat,lon,"
     "altitude,heading,"
-    "air_speed,gnd_speed,"
+    "air_speed,gnd_speed,vel_down,"
     "pitch,roll,"
-    "pitch_rate,roll_rate,"
+    "pitch_rate,roll_rate,yaw_rate,"
+    "ax,ay,az,"
     "front_rpm,rear_rpm,"
     "E_raw_adc,R_raw_adc,"
     "ele_param0,ele_param1,ele_param2,ele_param3,"
@@ -236,7 +237,10 @@ String csvHeader() {
     "E_stick_mapped,R_stick_mapped,E_krs,R_krs,"
     "E_trim,E_angle,R_angle,"
     "e_servo_temp,r_servo_temp,is_assisted,"
-    "err0,err1,err2,err3,err4,err5,err6,err7,err8,err9,err10,err11";
+    "err0,err1,err2,err3,err4,err5,err6,err7,err8,err9,err10,err11,"
+    "vane_alpha_deg,vane_beta_deg,vane_alpha_raw,vane_beta_raw,"
+    "vane_alpha_health,vane_beta_health,vane_alpha_agc,vane_beta_agc,"
+    "vane_t,seq";
 }
 
 // CSV1行を buf に書き出す。返り値は書き込んだバイト数 (NUL 含まず)。
@@ -246,9 +250,10 @@ size_t packetToCsv(const FullTelemetryPacket& p, char* buf, size_t bufsize) {
     "%lu,%lu,%lu,"
     "%.7f,%.7f,"
     "%.3f,%.3f,"
+    "%.3f,%.3f,%.3f,"
     "%.3f,%.3f,"
-    "%.3f,%.3f,"
-    "%.7f,%.7f,"
+    "%.7f,%.7f,%.3f,"
+    "%.4f,%.4f,%.4f,"
     "%.1f,%.1f,"
     "%d,%d,"
     "%d,%d,%d,%d,"
@@ -256,13 +261,17 @@ size_t packetToCsv(const FullTelemetryPacket& p, char* buf, size_t bufsize) {
     "%.3f,%.3f,%d,%d,"
     "%.3f,%.3f,%.3f,"
     "%.3f,%.3f,%d,"
-    "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
+    "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,"
+    "%.2f,%.2f,%u,%u,"
+    "%u,%u,%u,%u,"
+    "%lu,%lu",
     (unsigned long)p.epoch_time,(unsigned long)p.ctrl_stk_t,(unsigned long)p.main_bord_t,
     p.lat, p.lon,
     p.Altitude, p.heading,
-    p.air_speed, p.gnd_speed,
+    p.air_speed, p.gnd_speed, p.vel_down,
     p.pitch, p.roll,
-    p.pitch_rate, p.roll_rate,
+    p.pitch_rate, p.roll_rate, p.yaw_rate,
+    p.ax, p.ay, p.az,
     p.front_rpm, p.rear_rpm,
     p.E_raw_adc, p.R_raw_adc,
     p.ele_param[0], p.ele_param[1], p.ele_param[2], p.ele_param[3],
@@ -281,7 +290,10 @@ size_t packetToCsv(const FullTelemetryPacket& p, char* buf, size_t bufsize) {
     p.electrical_errors[8]  ? 1 : 0,
     p.electrical_errors[9]  ? 1 : 0,
     p.electrical_errors[10] ? 1 : 0,
-    p.electrical_errors[11] ? 1 : 0
+    p.electrical_errors[11] ? 1 : 0,
+    p.vane_alpha_deg, p.vane_beta_deg, (unsigned)p.vane_alpha_raw, (unsigned)p.vane_beta_raw,
+    (unsigned)p.vane_alpha_health, (unsigned)p.vane_beta_health, (unsigned)p.vane_alpha_agc, (unsigned)p.vane_beta_agc,
+    (unsigned long)p.vane_t, (unsigned long)p.seq
   );
   if (n < 0 || (size_t)n >= bufsize) return (size_t)-1;
   return (size_t)n;
@@ -475,7 +487,7 @@ void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
   if(p.role != ROLE_MEINKIBAN3) return;
   lastOnRecv = millis();
 
-  char buf[512];
+  char buf[768];   // ★ベーン列追加で行が長くなったため拡大(62列)
   size_t n = packetToCsv(p, buf, sizeof(buf) - 2);
   if (n == (size_t)-1) return;  // 切り詰められたら欠損行を吐かない
   buf[n++] = '\r';
