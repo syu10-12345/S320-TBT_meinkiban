@@ -77,7 +77,6 @@ int16_t rawPressure;
 double AIR_DENSITY;
 
 /*==========★αβベーン(AS5600×2 via mux, Wire1)の変数==========*/
-Preferences   vanePrefs;
 float         vane_alpha_deg = 0.0f, vane_beta_deg = 0.0f;   // 正規化角[deg]
 uint16_t      vane_alpha_raw = 0,    vane_beta_raw = 0;       // 生角[0-4095]
 uint8_t       vane_alpha_health = 0, vane_beta_health = 0;    // bit0:present 1:MD 2:ML 3:MH
