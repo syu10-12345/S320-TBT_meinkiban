@@ -725,7 +725,6 @@ void sendAndoroid() {
   myAndroid.add("gnd_speed", gnd_speed);
   myAndroid.add("pitch", pitch);
   myAndroid.add("roll", roll);
-  myAndroid.add("heading",heading);
   myAndroid.add("pitch_rate", pitch_rate);
   myAndroid.add("roll_rate", roll_rate);
   myAndroid.add("front_rpm", front_rpm);
