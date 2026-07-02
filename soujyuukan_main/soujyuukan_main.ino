@@ -254,6 +254,23 @@ bool pidWasInBand = false;
 static const int PID_LONG_PRESS_FRAMES = 30;
 int pidBandHoldFrames = 0;
 
+// ニュートラルボタン: 長押しは押下フレーム数、単押しはリリース安定後に確定（30 Hz想定）
+static const int NEUTRAL_LONG_PRESS_FRAMES = 30;
+static const int NEUTRAL_RELEASE_STABLE_FRAMES = 4;
+static bool neutralStrokeActive = false;
+static bool neutralLongPressDone = false;
+static int neutralBandHoldFrames = 0;
+static int neutralOutsideStableFrames = 0;
+static bool neutralWasInBand = false;
+
+static void resetNeutralGesture() {
+  neutralStrokeActive = false;
+  neutralLongPressDone = false;
+  neutralBandHoldFrames = 0;
+  neutralOutsideStableFrames = 0;
+  neutralWasInBand = false;
+}
+
 unsigned long lastPushed = millis();  //ボタン4チャタリング防止用
 int h[120];
 const int his_SIZE = 120;
@@ -281,34 +298,54 @@ void trimElevetor() {
   //newindex = (index + SIZE - (n % SIZE)) % SIZE; リングバッファでn戻りたい場合。
 
   if(h[hi] == 1){
+    resetNeutralGesture();
     Trimelevetor = constrain(Trimelevetor - 0.1,ElevatorDegMin,ElevatorDegMax);
     settingsChanged = true;
   }else if(h[hi] == 2){
+    resetNeutralGesture();
     Trimelevetor = constrain(Trimelevetor + 0.1,ElevatorDegMin,ElevatorDegMax);
     settingsChanged = true;
   }
 
-  //ボタン3が単押しか確認するゾーン
-  bool isthreetan = 1;
-  for(int i = 2;i < 6;i++){
-    isthreetan = isthreetan && h[mn(i)] == 3;
-  }
-  if(h[mn(0)] != 3 && h[mn(1)] != 3 && isthreetan && h[mn(6)] != 3 && h[mn(7)] != 3){
-    Trimelevetor = neutralTrimeEle;
-    settingsChanged = true;
-  }
+  if(h[hi] == 3){
+    neutralOutsideStableFrames = 0;
+    if(!neutralWasInBand){
+      neutralBandHoldFrames = 1;
+    }else{
+      neutralBandHoldFrames++;
+    }
+    neutralWasInBand = true;
 
-  //ボタン3が長押しか確認するゾーン
-  bool isthreenaga = 1;
-  for(int i = 2; i < 32;i++){
-    isthreenaga = isthreenaga && h[mn(i)] == 3;
-  }
-  if(h[mn(0)] != 3 && h[mn(1)] != 3 && isthreenaga){
-    neutralTrimeEle = Trimelevetor;
-    neutralRud = getpos0;
-    neutralele = getpos1;
-    settingsChanged = true;
-    xTaskCreate(Ltika, "Ltika", 1024, NULL, 9, NULL);
+    if(!neutralStrokeActive){
+      neutralStrokeActive = true;
+      neutralLongPressDone = false;
+    }
+
+    if(neutralBandHoldFrames > NEUTRAL_LONG_PRESS_FRAMES && !neutralLongPressDone){
+      neutralLongPressDone = true;
+      neutralBandHoldFrames = 0;
+      neutralTrimeEle = Trimelevetor;
+      neutralRud = getpos0;
+      neutralele = getpos1;
+      settingsChanged = true;
+      xTaskCreate(Ltika, "Ltika", 1024, NULL, 9, NULL);
+    }
+  }else if(h[hi] != 1 && h[hi] != 2 && h[hi] != 4){
+    neutralWasInBand = false;
+
+    if(neutralStrokeActive){
+      neutralBandHoldFrames = 0;
+      neutralOutsideStableFrames++;
+      if(neutralOutsideStableFrames >= NEUTRAL_RELEASE_STABLE_FRAMES){
+        if(!neutralLongPressDone){
+          Trimelevetor = neutralTrimeEle;
+          settingsChanged = true;
+        }
+        resetNeutralGesture();
+      }
+    }else{
+      neutralOutsideStableFrames = 0;
+    }
   }
 
   //ボタン4がある程度長押しか確認するゾーン
