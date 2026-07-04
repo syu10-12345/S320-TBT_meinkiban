@@ -257,6 +257,9 @@ int pidBandHoldFrames = 0;
 // ニュートラルボタン: 長押しは押下フレーム数、単押しはリリース安定後に確定（30 Hz想定）
 static const int NEUTRAL_LONG_PRESS_FRAMES = 30;
 static const int NEUTRAL_RELEASE_STABLE_FRAMES = 4;
+// 帯3(ニュートラル帯)は他ボタンの押下/離脱時にADCが通過するだけでも一瞬入り得るため、
+// 2フレーム連続で滞留するまではストローク開始とみなさない（誤検知防止のエントリーデバウンス）
+static const int NEUTRAL_ENTER_STABLE_FRAMES = 2;
 static bool neutralStrokeActive = false;
 static bool neutralLongPressDone = false;
 static int neutralBandHoldFrames = 0;
@@ -316,7 +319,7 @@ void trimElevetor() {
     }
     neutralWasInBand = true;
 
-    if(!neutralStrokeActive){
+    if(!neutralStrokeActive && neutralBandHoldFrames >= NEUTRAL_ENTER_STABLE_FRAMES){
       neutralStrokeActive = true;
       neutralLongPressDone = false;
     }

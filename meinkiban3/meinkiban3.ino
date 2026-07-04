@@ -913,16 +913,6 @@ void confirmICM() {
  *   ・読みは loop(Core1) から = Wire1単一オーナー(SDP810/MCPと同タスク)
  * ===================================================================== */
 
-// muxチャネル選択(ステートレス)
-static bool muxSelect(uint8_t ch) {
-  Wire1.beginTransmission(MUX_ADDR);
-  Wire1.write((uint8_t)(1 << ch));
-  if(Wire1.endTransmission() != 0){
-    return false;
-  }else{
-    return true;
-  }
-}
 // 全ch切離し(SDP810を巻き込ませない)
 static void muxDisableAll() {
   Wire1.beginTransmission(MUX_ADDR);
@@ -991,13 +981,20 @@ void readVanes() {
   bool doAgc = (millis() - lastAgcMs >= 1000);   // AGCは1Hzで十分
   if (doAgc) lastAgcMs = millis();
 
+  static uint16_t vaneFailCount = 0;
+  static unsigned long lastRecoverMs = 0;
+
   // ── α (ch0) ── まずmuxに届くか確認(届かない=バス異常)
   Wire1.beginTransmission(MUX_ADDR);
   Wire1.write((uint8_t)(1 << CH_ALPHA));
   if (Wire1.endTransmission() != 0) {
     vane_alpha_active = vane_beta_active = false;
     vane_alpha_health = vane_beta_health = 0;
-    vaneBusRecover();            // Vを守るため復帰だけして今回は中断
+    vaneFailCount++;
+    if (vaneFailCount >= 3 && millis() - lastRecoverMs >= 1000) {  // 連続3回かつ1s以上
+        lastRecoverMs = millis();
+        vaneBusRecover();
+    }
     return;
   }
   readOneVane(vane_alpha_zpos, doAgc, &vane_alpha_raw, &vane_alpha_deg,
@@ -1009,7 +1006,12 @@ void readVanes() {
   if(Wire1.endTransmission() != 0){
     vane_beta_active = false;
     vane_beta_health = 0;
-    vaneBusRecover();
+    vaneFailCount++;
+    if (vaneFailCount >= 3 && millis() - lastRecoverMs >= 1000) {  // 連続3回かつ1s以上
+        lastRecoverMs = millis();
+        vaneBusRecover();
+    }
+    muxDisableAll();
     return;
   }
   readOneVane(vane_beta_zpos, doAgc, &vane_beta_raw, &vane_beta_deg,
