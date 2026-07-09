@@ -260,11 +260,16 @@ static const int NEUTRAL_RELEASE_STABLE_FRAMES = 4;
 // 帯3(ニュートラル帯)は他ボタンの押下/離脱時にADCが通過するだけでも一瞬入り得るため、
 // 2フレーム連続で滞留するまではストローク開始とみなさない（誤検知防止のエントリーデバウンス）
 static const int NEUTRAL_ENTER_STABLE_FRAMES = 2;
+// トリム±ボタン押下後、この数フレームはニュートラル帯を無視する。
+// トリム±を押した直後にニュートラルを押すのは指の移動時間的にあり得ないため、
+// ボタンを離す際にADCがニュートラル帯を通過することによる単押し誤検知を防ぐ。
+static const int NEUTRAL_LOCKOUT_AFTER_TRIM_FRAMES = 2;
 static bool neutralStrokeActive = false;
 static bool neutralLongPressDone = false;
 static int neutralBandHoldFrames = 0;
 static int neutralOutsideStableFrames = 0;
 static bool neutralWasInBand = false;
+static int neutralLockoutFrames = 0;
 
 static void resetNeutralGesture() {
   neutralStrokeActive = false;
@@ -287,11 +292,11 @@ void trimElevetor() {
   hi = (hi+1) % his_SIZE;
   TrimE_temp = TrimE = analogRead(trimE);
 
-  if (0 <= TrimE && TrimE <= 100) {  //優先度1
+  if (0 <= TrimE && TrimE < 100) {  //優先度1
     h[hi] = 1;
-  } else if (665 <= TrimE && TrimE <= 1675) {  // 優先度2
+  } else if (665 <= TrimE && TrimE < 1675) {  // 優先度2
     h[hi] = 2;
-  } else if (1675 <= TrimE && TrimE <= 2820) {// 優先度3
+  } else if (1675 <= TrimE && TrimE < 2820) {// 優先度3
     h[hi] = 3;
   } else if (2820 <= TrimE && TrimE <= 3995) {  //優先度4
     h[hi] = 4;
@@ -302,38 +307,48 @@ void trimElevetor() {
 
   if(h[hi] == 1){
     resetNeutralGesture();
+    neutralLockoutFrames = NEUTRAL_LOCKOUT_AFTER_TRIM_FRAMES;
     Trimelevetor = constrain(Trimelevetor - 0.1,ElevatorDegMin,ElevatorDegMax);
     settingsChanged = true;
   }else if(h[hi] == 2){
     resetNeutralGesture();
+    neutralLockoutFrames = NEUTRAL_LOCKOUT_AFTER_TRIM_FRAMES;
     Trimelevetor = constrain(Trimelevetor + 0.1,ElevatorDegMin,ElevatorDegMax);
     settingsChanged = true;
   }
 
   if(h[hi] == 3){
-    neutralOutsideStableFrames = 0;
-    if(!neutralWasInBand){
-      neutralBandHoldFrames = 1;
+    if(neutralLockoutFrames > 0){
+      // トリム±押下直後のロックアウト中はニュートラル帯を無視して1フレーム消化する
+      neutralLockoutFrames--;
     }else{
-      neutralBandHoldFrames++;
-    }
-    neutralWasInBand = true;
+      neutralOutsideStableFrames = 0;
+      if(!neutralWasInBand){
+        neutralBandHoldFrames = 1;
+      }else{
+        neutralBandHoldFrames++;
+      }
+      neutralWasInBand = true;
 
-    if(!neutralStrokeActive && neutralBandHoldFrames >= NEUTRAL_ENTER_STABLE_FRAMES){
-      neutralStrokeActive = true;
-      neutralLongPressDone = false;
-    }
+      if(!neutralStrokeActive && neutralBandHoldFrames >= NEUTRAL_ENTER_STABLE_FRAMES){
+        neutralStrokeActive = true;
+        neutralLongPressDone = false;
+      }
 
-    if(neutralBandHoldFrames > NEUTRAL_LONG_PRESS_FRAMES && !neutralLongPressDone){
-      neutralLongPressDone = true;
-      neutralBandHoldFrames = 0;
-      neutralTrimeEle = Trimelevetor;
-      neutralRud = getpos0;
-      neutralele = getpos1;
-      settingsChanged = true;
-      xTaskCreate(Ltika, "Ltika", 1024, NULL, 9, NULL);
+      if(neutralBandHoldFrames > NEUTRAL_LONG_PRESS_FRAMES && !neutralLongPressDone){
+        neutralLongPressDone = true;
+        neutralBandHoldFrames = 0;
+        neutralTrimeEle = Trimelevetor;
+        neutralRud = getpos0;
+        neutralele = getpos1;
+        settingsChanged = true;
+        xTaskCreate(Ltika, "Ltika", 1024, NULL, 9, NULL);
+      }
     }
   }else if(h[hi] != 1 && h[hi] != 2 && h[hi] != 4){
+    if(neutralLockoutFrames > 0){
+      neutralLockoutFrames--;
+    }
     neutralWasInBand = false;
 
     if(neutralStrokeActive){
@@ -560,9 +575,9 @@ void mainloop(void *pvParameters) {
     nv.ctrl_stk_t = millis();
 
     esp_now_send(BROADCAST_MAC, (uint8_t *)&nv, sizeof(nv));
-
-    Serial.printf("E:%.1f R:%.1f deg:%f,%f krs:%d,%d setPos:%d,%d raw:%d,%d getPos:%d,%d pitch:%.1f pid:%.1f temp:%d\n", krs2ele((float)getpos1), krs2rud((float)getpos0), degE,degR,krsE, krsR,setpos0, setpos1, rawEle, rawRud, getpos0, getpos1, currentPitch, tempDegE,TrimE_temp);
-
+    Serial.printf("E:%.1f,R:%.1f,degE:%f,degR:%f,krsE:%d,krsR:%d,setPosE:%d,setPosR:%d,rawE:%d,rawR:%d,getPosE:%d,getPosR:%d,pitch:%.1f,tradc:%d,Trimelevetor:%f\n", 
+              krs2ele((float)getpos1), krs2rud((float)getpos0), degE, degR, krsE, krsR, setpos1, setpos0, rawEle, rawRud, getpos1, getpos0, currentPitch, TrimE_temp,Trimelevetor);
+    //Serial.printf("rawE:%d,rawR:%d,getPosE:%d,getPosR:%d\n", rawEle, rawRud, getpos1, getpos0);
     vTaskDelayUntil(&xLastWakeTime, xFrequency);
   }
   vTaskDelete(NULL);
