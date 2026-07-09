@@ -260,9 +260,10 @@ static const int NEUTRAL_RELEASE_STABLE_FRAMES = 4;
 // 帯3(ニュートラル帯)は他ボタンの押下/離脱時にADCが通過するだけでも一瞬入り得るため、
 // 2フレーム連続で滞留するまではストローク開始とみなさない（誤検知防止のエントリーデバウンス）
 static const int NEUTRAL_ENTER_STABLE_FRAMES = 2;
-// トリム±ボタン押下後、この数フレームはニュートラル帯を無視する。
+// トリム±ボタン押下後、この数回の帯3検出はニュートラル帯として扱わない。
 // トリム±を押した直後にニュートラルを押すのは指の移動時間的にあり得ないため、
 // ボタンを離す際にADCがニュートラル帯を通過することによる単押し誤検知を防ぐ。
+// h == -1 など帯3以外のフレームでは消費せず、30 Hz周期で帯3に入った回数だけ数える。
 static const int NEUTRAL_LOCKOUT_AFTER_TRIM_FRAMES = 2;
 static bool neutralStrokeActive = false;
 static bool neutralLongPressDone = false;
@@ -319,8 +320,11 @@ void trimElevetor() {
 
   if(h[hi] == 3){
     if(neutralLockoutFrames > 0){
-      // トリム±押下直後のロックアウト中はニュートラル帯を無視して1フレーム消化する
+      // トリム±押下直後のロックアウト中は帯3検出だけを消費し、ジェスチャ状態には入れない。
       neutralLockoutFrames--;
+      neutralBandHoldFrames = 0;
+      neutralOutsideStableFrames = 0;
+      neutralWasInBand = false;
     }else{
       neutralOutsideStableFrames = 0;
       if(!neutralWasInBand){
@@ -346,9 +350,6 @@ void trimElevetor() {
       }
     }
   }else if(h[hi] != 1 && h[hi] != 2 && h[hi] != 4){
-    if(neutralLockoutFrames > 0){
-      neutralLockoutFrames--;
-    }
     neutralWasInBand = false;
 
     if(neutralStrokeActive){
@@ -575,8 +576,8 @@ void mainloop(void *pvParameters) {
     nv.ctrl_stk_t = millis();
 
     esp_now_send(BROADCAST_MAC, (uint8_t *)&nv, sizeof(nv));
-    Serial.printf("E:%.1f,R:%.1f,degE:%f,degR:%f,krsE:%d,krsR:%d,setPosE:%d,setPosR:%d,rawE:%d,rawR:%d,getPosE:%d,getPosR:%d,pitch:%.1f,tradc:%d,Trimelevetor:%f\n", 
-              krs2ele((float)getpos1), krs2rud((float)getpos0), degE, degR, krsE, krsR, setpos1, setpos0, rawEle, rawRud, getpos1, getpos0, currentPitch, TrimE_temp,Trimelevetor);
+    Serial.printf("milis:%d,E:%.1f,R:%.1f,degE:%f,degR:%f,krsE:%d,krsR:%d,setPosE:%d,setPosR:%d,rawE:%d,rawR:%d,getPosE:%d,getPosR:%d,pitch:%.1f,tradc:%d,Trimelevetor:%f\n",
+              millis(),krs2ele((float)getpos1), krs2rud((float)getpos0), degE, degR, krsE, krsR, setpos1, setpos0, rawEle, rawRud, getpos1, getpos0, currentPitch, TrimE_temp,Trimelevetor);
     //Serial.printf("rawE:%d,rawR:%d,getPosE:%d,getPosR:%d\n", rawEle, rawRud, getpos1, getpos0);
     vTaskDelayUntil(&xLastWakeTime, xFrequency);
   }
