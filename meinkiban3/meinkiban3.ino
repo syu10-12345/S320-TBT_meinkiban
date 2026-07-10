@@ -351,7 +351,7 @@ void loop() {
           delay(25);
           instrumentPanel.calibrate();
           g_calibrating = false;
-          ref_alt = gnss_alt;
+          ref_alt = gnss_alt - 10;     //GNSSの高度の基準値、プラットフォームが海面から10mの高さにあるので-10(ボタンを押すのが10mの高さ)
           Alt_offset = raw_Altitude;
           instrumentPanel.saveAltOffsets(ref_alt, Alt_offset);
         }
