@@ -371,7 +371,7 @@ void loop() {
     lastPrint1 += interval;
     tgrsw = digitalRead(tgrsw_PIN);
     count1 += 1;
-    if(count1 >= 40){
+    if(count1 >= 35){
       count1 = 0;
     }
     getAir_speed();
@@ -546,29 +546,25 @@ void MCP23017_LED() {
   if (mcp_active) {
     if (count1 <= 5) {
       mcp.digitalWrite(LED1, HIGH);
-      mcp.digitalWrite(LED2, LOW);
+      mcp.digitalWrite(LED2, LOW); 
       mcp.digitalWrite(LED3, LOW);
     } else if (5 < count1 && count1 <= 10) {
       mcp.digitalWrite(LED1, HIGH);
-      mcp.digitalWrite(LED2, LOW);
+      mcp.digitalWrite(LED2, HIGH);
       mcp.digitalWrite(LED3, LOW);
     } else if (10 < count1 && count1 <= 15) {
-      mcp.digitalWrite(LED1, HIGH);
+      mcp.digitalWrite(LED1, LOW);
       mcp.digitalWrite(LED2, HIGH);
       mcp.digitalWrite(LED3, LOW);
     } else if (15 < count1 && count1 <= 20) {
       mcp.digitalWrite(LED1, LOW);
       mcp.digitalWrite(LED2, HIGH);
-      mcp.digitalWrite(LED3, LOW);
-    } else if (20 < count1 && count1 <= 25) {
-      mcp.digitalWrite(LED1, LOW);
-      mcp.digitalWrite(LED2, HIGH);
       mcp.digitalWrite(LED3, HIGH);
-    } else if (25 < count1 && count1 <= 30) {
+    } else if (20 < count1 && count1 <= 25) {
       mcp.digitalWrite(LED1, LOW);
       mcp.digitalWrite(LED2, LOW);
       mcp.digitalWrite(LED3, HIGH);
-    } else if (30 < count1 && count1 <= 35) {
+    } else if (25 < count1 && count1 <= 30) {
       mcp.digitalWrite(LED1, HIGH);
       mcp.digitalWrite(LED2, LOW);
       mcp.digitalWrite(LED3, HIGH);
